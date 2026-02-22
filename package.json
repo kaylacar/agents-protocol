@@ -1,0 +1,13 @@
+{
+  "name": "agents-protocol",
+  "private": true,
+  "workspaces": [
+    "sdk",
+    "client"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces",
+    "clean": "npm run clean --workspaces --if-present"
+  }
+}

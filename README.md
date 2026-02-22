@@ -1,128 +1,108 @@
-# agents.txt Protocol
+# agents-protocol
 
-**A standard for AI agents to discover and interact with websites.**
+`agents.txt` is to AI agents what `robots.txt` is to crawlers — except instead of access rules, it describes what an agent can *do* on your site, and every action is cryptographically logged.
 
-Like `robots.txt` tells crawlers what they can access, `agents.txt` tells AI agents what they can **do** — and provides cryptographic proof of what they did.
+Sites serve a discovery file at `/.well-known/agents.txt` (human-readable) and `/.well-known/agents.json` (machine-readable). Agents read the manifest, open a session, call capabilities, and hand the checkout URL back to the human. They never complete payment themselves.
 
-## The Problem
+---
 
-AI agents are increasingly browsing, shopping, and acting on behalf of humans. But there's no standard way for them to:
-
-1. **Discover** what a website offers and how to interact with it
-2. **Interact** through structured APIs rather than scraping HTML
-3. **Prove** what they did — to the user, the site owner, or a regulator
-
-## The Protocol
-
-### Discovery
-
-Every participating site serves two files:
-
-- **`/.well-known/agents.txt`** — Human-readable discovery file (like robots.txt)
-- **`/.well-known/agents.json`** — Machine-readable capabilities and endpoints
-
-### Capabilities
-
-Sites declare what agents can do:
-
-| Capability | Description | Session Required |
-|---|---|---|
-| `search` | Search for items/content | No |
-| `browse` | List items with pagination | No |
-| `detail` | Get detailed item info | No |
-| `cart.add` | Add item to cart | Yes |
-| `cart.view` | View current cart | Yes |
-| `cart.update` | Update cart item quantity | Yes |
-| `cart.remove` | Remove item from cart | Yes |
-| `checkout` | Get checkout URL (human completes) | Yes |
-| `contact` | Send a message | No |
-
-Sites can define custom capabilities beyond these built-ins.
-
-### Sessions
-
-Stateful actions (cart, checkout) require a session:
+## Packages
 
 ```
-POST /.well-known/agents/api/session
-→ { "session_token": "...", "expires_at": "...", "capabilities": [...] }
+npm install @agents-protocol/sdk     # for site owners
+npm install @agents-protocol/client  # for agent developers
 ```
 
-Sessions are time-limited and scoped to declared capabilities.
+---
 
-### Human Handoff
-
-Some actions (checkout, payment, account creation) can never be completed by an agent. They return a URL for the human to finish the action. The agent facilitates; the human decides.
-
-### Audit Trail
-
-Every session produces a signed, hash-chained artifact (powered by [RER](https://github.com/kaylacar/rer)) that proves:
-- What the agent did
-- What policies were enforced
-- That nothing was tampered with
-
-## Quick Start
-
-### For Site Owners (TypeScript/Node.js)
+## SDK — add an agent door to your site
 
 ```typescript
-import { AgentDoor, search, browse, cart, checkout } from '@agents-protocol/sdk';
+import { AgentDoor, search, browse, detail, cart, checkout } from '@agents-protocol/sdk';
 import express from 'express';
 
 const app = express();
+app.use(express.json());
 
 const door = new AgentDoor({
-  site: {
-    name: 'My Store',
-    url: 'https://example.com',
-    description: 'Handmade ceramics',
-  },
+  site: { name: 'My Store', url: 'https://example.com' },
   capabilities: [
     search({ handler: async (q) => db.search(q) }),
-    browse({ handler: async (page, filters) => db.list(page, filters) }),
+    browse({ handler: async (opts) => db.list(opts) }),
+    detail({ handler: async (id) => db.getById(id) }),
     cart(),
-    checkout({ onCheckout: async (cart) => stripe.createSession(cart) }),
+    checkout({ onCheckout: async (items) => stripe.createSession(items) }),
   ],
+  rateLimit: 60,
+  sessionTtl: 1800,
+  audit: true,
 });
 
 app.use(door.middleware());
 app.listen(3000);
 ```
 
-Your site now serves:
-- `/.well-known/agents.txt`
-- `/.well-known/agents.json`
-- `/.well-known/agents/api/*`
+That's it. Your site now serves `agents.txt`, `agents.json`, and all the API routes. With `audit: true`, every session produces a signed artifact ([RER](https://github.com/kaylacar/rer)) that proves exactly what the agent did.
 
-### For Agent Developers
+---
 
-```
-1. GET /.well-known/agents.json → discover capabilities
-2. POST /.well-known/agents/api/session → get session token
-3. GET /.well-known/agents/api/search?q=blue+mugs → find items
-4. POST /.well-known/agents/api/cart { item_id, quantity } → build cart
-5. POST /.well-known/agents/api/checkout → get checkout URL
-6. Return checkout URL to human
-```
+## Client — talk to any agents-protocol site
 
-## Project Structure
+```typescript
+import { AgentClient } from '@agents-protocol/client';
 
-```
-agents-protocol/
-├── spec/          # Protocol specification documents
-├── sdk/           # TypeScript reference implementation
-├── examples/      # Example integrations
-└── README.md
+const client = new AgentClient('https://any-store.com');
+
+await client.connect();
+
+const results = await client.search('blue mug');
+await client.cartAdd(results[0].id, 1, { name: results[0].name, price: results[0].price });
+
+const { checkout_url } = await client.checkout();
+// hand checkout_url to the human — agent stops here
+
+const artifact = await client.getAuditArtifact(); // signed proof
+await client.disconnect();
 ```
 
-## Specification
+The client reads `agents.json` on first use and caches it. `connect()` creates a session. All auth headers are handled automatically.
 
-- [agents.txt Format](spec/agents-txt.md)
-- [agents.json Schema](spec/agents-json.md)
+---
+
+## Capabilities
+
+| Name | Method | Session |
+|---|---|---|
+| `search` | GET | no |
+| `browse` | GET | no |
+| `detail` | GET | no |
+| `cart.add` | POST | yes |
+| `cart.view` | GET | yes |
+| `cart.update` | PUT | yes |
+| `cart.remove` | DELETE | yes |
+| `checkout` | POST | yes |
+| `contact` | POST | no |
+
+---
+
+## Spec
+
+- [agents.txt](spec/agents-txt.md)
+- [agents.json](spec/agents-json.md)
 - [Interaction API](spec/interaction-api.md)
 - [Sessions](spec/session.md)
-- [Audit Trail](spec/audit.md)
+- [Audit](spec/audit.md)
 
-## License
+---
+
+## Development
+
+```bash
+npm install      # installs sdk + client (workspaces)
+npm run build
+npm test         # 87 tests
+```
+
+---
 
 MIT
