@@ -1,21 +1,37 @@
 # agents-protocol
 
-`agents.txt` is to AI agents what `robots.txt` is to crawlers — except instead of access rules, it describes what an agent can *do* on your site, and every action is cryptographically logged.
-
-Sites serve a discovery file at `/.well-known/agents.txt` (human-readable) and `/.well-known/agents.json` (machine-readable). Agents read the manifest, open a session, call capabilities, and hand the checkout URL back to the human. They never complete payment themselves.
+`agents.txt` is to AI agents what `robots.txt` is to crawlers — except instead of blocking bots, it tells AI agents what they can *do* on your site, and every action is cryptographically logged.
 
 ---
 
-## Packages
+## The easy path — 5 minutes, no install
+
+Create a file at `/.well-known/agents.txt` on your site:
+
+```
+# agents.txt — Agent Interaction Protocol v0.1
+
+Name: My Store
+URL: https://example.com
+Description: An online store selling handmade ceramics
+Contact: hello@example.com
+
+Capabilities: search, browse, contact
+Rate-Limit: 60/minute
+```
+
+That's it. Agents can now discover your site. No code, no dependencies, no server changes — just a file at a well-known path.
+
+For sites that want to go further (sessions, cart, live API calls), keep reading.
+
+---
+
+## The full path — SDK with live capabilities
 
 ```
 npm install @agents-protocol/sdk     # for site owners
 npm install @agents-protocol/client  # for agent developers
 ```
-
----
-
-## SDK — add an agent door to your site
 
 ```typescript
 import { AgentDoor, search, browse, detail, cart, checkout } from '@agents-protocol/sdk';
@@ -35,14 +51,25 @@ const door = new AgentDoor({
   ],
   rateLimit: 60,
   sessionTtl: 1800,
-  audit: true,
 });
 
 app.use(door.middleware());
 app.listen(3000);
 ```
 
-That's it. Your site now serves `agents.txt`, `agents.json`, and all the API routes. With `audit: true`, every session produces a signed artifact ([RER](https://github.com/kaylacar/rer)) that proves exactly what the agent did.
+Your site now serves `agents.txt`, `agents.json`, and all the API routes automatically. Agents can search, browse, add to cart, and get a checkout URL — but they can never complete payment. That always goes back to the human.
+
+### Add cryptographic audit trails
+
+Pass `audit: true` to record every agent action as a signed, hash-chained artifact ([RER](https://github.com/kaylacar/rer)). Every session produces tamper-evident proof of exactly what the agent did and what your site returned.
+
+```typescript
+const door = new AgentDoor({
+  site: { name: 'My Store', url: 'https://example.com' },
+  capabilities: [ ... ],
+  audit: true,  // every session produces a signed artifact
+});
+```
 
 ### Next.js / Cloudflare Workers / Deno
 
