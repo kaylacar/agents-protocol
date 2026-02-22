@@ -1,7 +1,7 @@
 import { CapabilityDefinition } from '../types';
 
 interface SearchOptions {
-  handler: (query: string, options?: { limit?: number }) => Promise<any[]>;
+  handler: (query: string, options?: { limit?: number }) => Promise<unknown[]>;
 }
 
 export function search({ handler }: SearchOptions): CapabilityDefinition {

@@ -1,7 +1,7 @@
 import { CapabilityDefinition } from '../types';
 
 interface DetailOptions {
-  handler: (id: string) => Promise<any>;
+  handler: (id: string) => Promise<unknown>;
 }
 
 export function detail({ handler }: DetailOptions): CapabilityDefinition {

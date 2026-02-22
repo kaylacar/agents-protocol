@@ -6,7 +6,7 @@ interface BrowseOptions {
     limit?: number;
     category?: string;
     filters?: Record<string, string>;
-  }) => Promise<{ items: any[]; total: number }>;
+  }) => Promise<{ items: unknown[]; total: number }>;
 }
 
 export function browse({ handler }: BrowseOptions): CapabilityDefinition {
