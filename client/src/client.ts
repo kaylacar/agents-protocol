@@ -1,4 +1,4 @@
-import { AgentsManifest, AgentSession, AgentClientConfig, AgentsCapability, CartItem, CartView, CheckoutResult } from './types';
+import { AgentsManifest, AgentSession, AgentClientConfig, AgentsCapability, AgentsFlow, CartItem, CartView, CheckoutResult } from './types';
 import { discover, discoverTxt } from './discover';
 import { createSession, endSession } from './session';
 import { request, AgentClientError } from './http';
@@ -9,11 +9,17 @@ export class AgentClient {
   private siteUrl: string;
   private fetchImpl: typeof fetch;
   private userAgent: string;
+  private maxRetries: number;
+  private retryDelay: number;
+  private pageSize: number;
 
   constructor(siteUrl: string, config: AgentClientConfig = {}) {
     this.siteUrl = siteUrl.replace(/\/$/, '');
     this.fetchImpl = config.fetch ?? fetch;
     this.userAgent = config.userAgent ?? '@agents-protocol/client/0.1.0';
+    this.maxRetries = config.maxRetries ?? 3;
+    this.retryDelay = config.retryDelay ?? 1000;
+    this.pageSize = config.pageSize ?? 20;
   }
 
   /** Fetch agents.json and learn what this site supports (cached after first call) */
@@ -27,6 +33,12 @@ export class AgentClient {
   /** Get the human-readable agents.txt */
   async discoverTxt(): Promise<string> {
     return discoverTxt(this.siteUrl, this.fetchImpl);
+  }
+
+  /** Return the site's suggested flows, if any */
+  async flows(): Promise<AgentsFlow[]> {
+    const manifest = await this.getManifest();
+    return manifest.flows ?? [];
   }
 
   /** Create a session (required for cart, checkout, and other session-gated capabilities) */
@@ -182,15 +194,49 @@ export class AgentClient {
    */
   async call(capabilityName: string, params?: Record<string, unknown>): Promise<any> {
     const cap = await this.requireCapability(capabilityName);
-    const isGet = cap.method === 'GET';
+    if (cap.requires_session && !this.session) {
+      await this.connect();
+    }
+    const isGet = cap.method === 'GET' || cap.method === 'DELETE';
     const res = await request(cap.endpoint, {
       method: cap.method,
       query: isGet ? (params as Record<string, string | number | undefined>) : undefined,
       body: !isGet ? params : undefined,
       headers: this.authHeaders(),
       fetchImpl: this.fetchImpl,
+      maxRetries: this.maxRetries,
+      retryDelay: this.retryDelay,
     });
     return this.unwrap(res, capabilityName);
+  }
+
+  /**
+   * Auto-paginate a browse-style capability that returns { items, total }.
+   * Yields each page's items array until all items have been retrieved.
+   *
+   * Usage:
+   *   for await (const items of client.paginate('browse', { category: 'mugs' })) {
+   *     process(items);
+   *   }
+   */
+  async *paginate<T = any>(
+    capabilityName: string,
+    params: Record<string, unknown> = {},
+  ): AsyncGenerator<T[]> {
+    let page = 1;
+    const limit = (params.limit as number) ?? this.pageSize;
+
+    while (true) {
+      const result = await this.call(capabilityName, { ...params, page, limit });
+      const items: T[] = result?.items ?? [];
+      if (items.length === 0) break;
+
+      yield items;
+
+      const fetched = page * limit;
+      if (fetched >= (result.total ?? fetched)) break;
+      page++;
+    }
   }
 
   /** Retrieve the signed audit artifact for the current session */

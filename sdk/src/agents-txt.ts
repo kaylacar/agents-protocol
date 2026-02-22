@@ -16,12 +16,8 @@ export function generateAgentsTxt(config: AgentDoorConfig): string {
     `URL: ${config.site.url}`,
   ];
 
-  if (config.site.description) {
-    lines.push(`Description: ${config.site.description}`);
-  }
-  if (config.site.contact) {
-    lines.push(`Contact: ${config.site.contact}`);
-  }
+  if (config.site.description) lines.push(`Description: ${config.site.description}`);
+  if (config.site.contact) lines.push(`Contact: ${config.site.contact}`);
 
   lines.push('');
   lines.push(`Agents-JSON: ${config.site.url}${basePath}/agents.json`);
@@ -32,15 +28,18 @@ export function generateAgentsTxt(config: AgentDoorConfig): string {
     lines.push(`Allow: ${cap.name}`);
   }
 
-  if (config.rateLimit) {
+  if (config.flows && config.flows.length > 0) {
     lines.push('');
-    lines.push(`Rate-Limit: ${config.rateLimit}/minute`);
+    lines.push('# Suggested Flows');
+    for (const flow of config.flows) {
+      lines.push(`Flow: ${flow.name} → ${flow.steps.join(', ')}`);
+      if (flow.description) lines.push(`Flow-Description: ${flow.description}`);
+    }
   }
 
-  if (config.sessionTtl) {
-    lines.push(`Session-TTL: ${config.sessionTtl}s`);
-  }
-
+  if (config.rateLimit) lines.push('');
+  if (config.rateLimit) lines.push(`Rate-Limit: ${config.rateLimit}/minute`);
+  if (config.sessionTtl) lines.push(`Session-TTL: ${config.sessionTtl}s`);
   if (config.audit) {
     lines.push(`Audit: true`);
     lines.push(`Audit-Endpoint: ${config.site.url}${basePath}/agents/api/audit/:session_id`);

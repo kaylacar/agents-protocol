@@ -80,4 +80,32 @@ describe('generateAgentsJson', () => {
     const json = generateAgentsJson(makeConfig({ capabilities: caps })) as any;
     expect(json.capabilities[0].endpoint).toBe('/.well-known/agents/api/detail/:id');
   });
+
+  it('includes flows when configured', () => {
+    const json = generateAgentsJson(makeConfig({
+      flows: [
+        { name: 'purchase', description: 'Buy a product', steps: ['search', 'detail', 'cart.add', 'checkout'] },
+        { name: 'browse', description: 'Browse the catalog', steps: ['browse', 'detail'] },
+      ],
+    })) as any;
+    expect(json.flows).toHaveLength(2);
+    expect(json.flows[0].name).toBe('purchase');
+    expect(json.flows[0].steps).toEqual(['search', 'detail', 'cart.add', 'checkout']);
+    expect(json.flows[1].name).toBe('browse');
+  });
+
+  it('omits flows when not configured', () => {
+    const json = generateAgentsJson(makeConfig()) as any;
+    expect(json.flows).toBeUndefined();
+  });
+
+  it('omits flows when array is empty', () => {
+    const json = generateAgentsJson(makeConfig({ flows: [] })) as any;
+    expect(json.flows).toBeUndefined();
+  });
+
+  it('includes delete endpoint in session config', () => {
+    const json = generateAgentsJson(makeConfig()) as any;
+    expect(json.session.delete).toBe('/.well-known/agents/api/session');
+  });
 });

@@ -85,6 +85,12 @@ The client reads `agents.json` on first use and caches it. `connect()` creates a
 
 ---
 
+## Standard
+
+This SDK implements the [agents.txt open standard](https://github.com/kaylacar/agents-txt). The standard defines the `/.well-known/agents.txt` and `/.well-known/agents.json` formats, the IANA well-known URI registrations, and the formal specification. If you need the lightweight parser/generator only (without the full SDK), use `@agents-txt/core` from that repo.
+
+For AI policy declaration (training rights, licensing, per-agent permissions), see the companion standard [ai.txt](https://github.com/kaylacar/ai-txt). The two standards are complementary — `agents.txt` declares capabilities, `ai.txt` declares policy. Both can be served from the same site.
+
 ## Spec
 
 - [agents.txt](spec/agents-txt.md)

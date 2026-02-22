@@ -7,12 +7,8 @@ function flattenCapabilities(config: AgentDoorConfig): CapabilityDefinition[] {
 function capabilityToEndpoint(cap: CapabilityDefinition, basePath: string): string {
   const base = `${basePath}/agents/api`;
   const parts = cap.name.split('.');
-  if (parts.length > 1) {
-    return `${base}/${parts.join('/')}`;
-  }
-  if (cap.params && Object.keys(cap.params).some(k => k === 'id' || k === ':id')) {
-    return `${base}/${cap.name}/:id`;
-  }
+  if (cap.name === 'detail') return `${base}/detail/:id`;
+  if (parts.length > 1) return `${base}/${parts.join('/')}`;
   return `${base}/${cap.name}`;
 }
 
@@ -39,8 +35,16 @@ export function generateAgentsJson(config: AgentDoorConfig): object {
     })),
     session: {
       create: `${basePath}/agents/api/session`,
+      delete: `${basePath}/agents/api/session`,
       ...(config.sessionTtl && { ttl_seconds: config.sessionTtl }),
     },
+    ...(config.flows && config.flows.length > 0 && {
+      flows: config.flows.map(f => ({
+        name: f.name,
+        description: f.description,
+        steps: f.steps,
+      })),
+    }),
     ...(config.rateLimit && { rate_limit: { requests_per_minute: config.rateLimit } }),
     ...(config.audit && {
       audit: {

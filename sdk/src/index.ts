@@ -10,7 +10,10 @@ export type {
   SiteConfig,
   CapabilityDefinition,
   AgentDoorConfig,
+  AgentRequest,
+  FlowDefinition,
   SessionData,
   AgentResponse,
   CartItem,
+  OpenAPISpec,
 } from './types';

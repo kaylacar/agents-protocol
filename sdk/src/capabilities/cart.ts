@@ -12,7 +12,7 @@ export function cart(): CapabilityDefinition[] {
       name: { type: 'string', required: false, description: 'Item name' },
       price: { type: 'number', required: false, description: 'Item price' },
     },
-    handler: async (req, _res, session) => {
+    handler: async (req, session) => {
       const { item_id, quantity, name, price } = req.body;
       if (!item_id || quantity == null) {
         throw new Error('Missing required parameters: item_id, quantity');
@@ -39,7 +39,7 @@ export function cart(): CapabilityDefinition[] {
     description: 'View current cart contents',
     method: 'GET',
     requiresSession: true,
-    handler: async (_req, _res, session) => {
+    handler: async (_req, session) => {
       const items = session!.cartItems;
       const subtotal = items.reduce((sum, item) => sum + (item.price ?? 0) * item.quantity, 0);
       return { items, subtotal };
@@ -55,16 +55,14 @@ export function cart(): CapabilityDefinition[] {
       item_id: { type: 'string', required: true, description: 'Item ID to update' },
       quantity: { type: 'number', required: true, description: 'New quantity' },
     },
-    handler: async (req, _res, session) => {
+    handler: async (req, session) => {
       const { item_id, quantity } = req.body;
       if (!item_id || quantity == null) {
         throw new Error('Missing required parameters: item_id, quantity');
       }
 
       const item = session!.cartItems.find(i => i.itemId === item_id);
-      if (!item) {
-        throw new Error(`Item not found in cart: ${item_id}`);
-      }
+      if (!item) throw new Error(`Item not found in cart: ${item_id}`);
 
       item.quantity = quantity;
       return { item_id, quantity };
@@ -79,16 +77,12 @@ export function cart(): CapabilityDefinition[] {
     params: {
       item_id: { type: 'string', required: true, description: 'Item ID to remove' },
     },
-    handler: async (req, _res, session) => {
+    handler: async (req, session) => {
       const item_id = req.body?.item_id || req.query.item_id;
-      if (!item_id) {
-        throw new Error('Missing required parameter: item_id');
-      }
+      if (!item_id) throw new Error('Missing required parameter: item_id');
 
       const index = session!.cartItems.findIndex(i => i.itemId === item_id);
-      if (index === -1) {
-        throw new Error(`Item not found in cart: ${item_id}`);
-      }
+      if (index === -1) throw new Error(`Item not found in cart: ${item_id}`);
 
       session!.cartItems.splice(index, 1);
       return { item_id, removed: true };

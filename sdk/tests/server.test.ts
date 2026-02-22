@@ -1,9 +1,8 @@
 import { AgentDoor } from '../src/server';
 import { search, browse, detail, cart, checkout, contact } from '../src/capabilities';
-import type { Request, Response } from 'express';
 
 // Minimal mock helpers
-function mockReq(method: string, path: string, opts?: { body?: any; query?: Record<string, string>; headers?: Record<string, string>; ip?: string }): Request {
+function mockReq(method: string, path: string, opts?: { body?: any; query?: Record<string, string>; headers?: Record<string, string>; ip?: string }): any {
   return {
     method,
     path,
@@ -13,20 +12,21 @@ function mockReq(method: string, path: string, opts?: { body?: any; query?: Reco
     headers: opts?.headers ?? {},
     ip: opts?.ip ?? '127.0.0.1',
     socket: { remoteAddress: '127.0.0.1' },
-  } as any;
+  };
 }
 
-function mockRes(): Response & { _status: number; _body: any; _headers: Record<string, any>; headersSent: boolean } {
+function mockRes(): any {
   const res: any = {
     _status: 200,
     _body: null,
-    _headers: {},
+    _headers: {} as Record<string, any>,
     headersSent: false,
     status(code: number) { res._status = code; return res; },
     json(body: any) { res._body = body; res.headersSent = true; return res; },
     send(body: any) { res._body = body; res.headersSent = true; return res; },
     type(t: string) { res._headers['content-type'] = t; return res; },
-    setHeader(k: string, v: any) { res._headers[k] = v; return res; },
+    setHeader(k: string, v: any) { res._headers[k.toLowerCase()] = v; return res; },
+    getHeader(k: string) { return res._headers[k.toLowerCase()]; },
   };
   return res;
 }
@@ -49,46 +49,83 @@ describe('AgentDoor', () => {
         checkout({ onCheckout: async () => ({ checkout_url: 'https://test.com/pay' }) }),
         contact({ handler: async () => {} }),
       ],
+      flows: [
+        { name: 'purchase', description: 'Find and buy a product', steps: ['search', 'detail', 'cart.add', 'checkout'] },
+      ],
       rateLimit: 100,
       sessionTtl: 3600,
     });
     return door.middleware();
   }
 
-  it('serves agents.txt', () => {
+  it('serves agents.txt', async () => {
     const mw = createDoor();
     const req = mockReq('GET', '/.well-known/agents.txt');
     const res = mockRes();
-    const next = jest.fn();
-
-    mw(req, res, next);
+    await mw(req, res, jest.fn());
 
     expect(res._headers['content-type']).toBe('text/plain');
     expect(res._body).toContain('Site: Test');
-    expect(next).not.toHaveBeenCalled();
   });
 
-  it('serves agents.json', () => {
+  it('serves agents.json', async () => {
     const mw = createDoor();
     const req = mockReq('GET', '/.well-known/agents.json');
     const res = mockRes();
-    const next = jest.fn();
+    await mw(req, res, jest.fn());
 
-    mw(req, res, next);
-
-    expect(res._body).toBeDefined();
     expect(res._body.schema_version).toBe('1.0');
     expect(res._body.site.name).toBe('Test');
     expect(res._body.capabilities.length).toBeGreaterThan(0);
   });
 
-  it('creates a session', () => {
+  it('includes flows in agents.json', async () => {
+    const mw = createDoor();
+    const req = mockReq('GET', '/.well-known/agents.json');
+    const res = mockRes();
+    await mw(req, res, jest.fn());
+
+    expect(res._body.flows).toBeDefined();
+    expect(res._body.flows[0].name).toBe('purchase');
+    expect(res._body.flows[0].steps).toEqual(['search', 'detail', 'cart.add', 'checkout']);
+  });
+
+  it('includes flows in agents.txt', async () => {
+    const mw = createDoor();
+    const req = mockReq('GET', '/.well-known/agents.txt');
+    const res = mockRes();
+    await mw(req, res, jest.fn());
+
+    expect(res._body).toContain('Flow: purchase');
+    expect(res._body).toContain('search, detail, cart.add, checkout');
+  });
+
+  it('sets Link header on agent routes', async () => {
+    const mw = createDoor();
+    const req = mockReq('GET', '/.well-known/agents.json');
+    const res = mockRes();
+    await mw(req, res, jest.fn());
+
+    expect(res._headers['link']).toContain('agents.json');
+    expect(res._headers['link']).toContain('rel="agents"');
+  });
+
+  it('sets Link header and calls next() for unmatched routes', async () => {
+    const mw = createDoor();
+    const req = mockReq('GET', '/some/other/path');
+    const res = mockRes();
+    const next = jest.fn();
+    await mw(req, res, next);
+
+    expect(next).toHaveBeenCalled();
+    expect(res._headers['link']).toContain('agents.json');
+  });
+
+  it('creates a session', async () => {
     const mw = createDoor();
     const req = mockReq('POST', '/.well-known/agents/api/session');
     const res = mockRes();
-    const next = jest.fn();
-
-    mw(req, res, next);
+    await mw(req, res, jest.fn());
 
     expect(res._body.ok).toBe(true);
     expect(res._body.data.session_token).toBeDefined();
@@ -100,11 +137,7 @@ describe('AgentDoor', () => {
     const mw = createDoor();
     const req = mockReq('GET', '/.well-known/agents/api/search', { query: { q: 'mug' } });
     const res = mockRes();
-    const next = jest.fn();
-
-    mw(req, res, next);
-    // Wait for async handler
-    await new Promise(r => setTimeout(r, 50));
+    await mw(req, res, jest.fn());
 
     expect(res._body.ok).toBe(true);
     expect(res._body.data[0].name).toContain('mug');
@@ -114,10 +147,7 @@ describe('AgentDoor', () => {
     const mw = createDoor();
     const req = mockReq('POST', '/.well-known/agents/api/cart/add', { body: { item_id: '1', quantity: 1 } });
     const res = mockRes();
-    const next = jest.fn();
-
-    mw(req, res, next);
-    await new Promise(r => setTimeout(r, 50));
+    await mw(req, res, jest.fn());
 
     expect(res._status).toBe(401);
     expect(res._body.ok).toBe(false);
@@ -129,7 +159,7 @@ describe('AgentDoor', () => {
     // Create session
     const sessionReq = mockReq('POST', '/.well-known/agents/api/session');
     const sessionRes = mockRes();
-    mw(sessionReq, sessionRes, jest.fn());
+    await mw(sessionReq, sessionRes, jest.fn());
     const token = sessionRes._body.data.session_token;
 
     // Add to cart
@@ -138,8 +168,7 @@ describe('AgentDoor', () => {
       headers: { authorization: `Bearer ${token}` },
     });
     const addRes = mockRes();
-    mw(addReq, addRes, jest.fn());
-    await new Promise(r => setTimeout(r, 50));
+    await mw(addReq, addRes, jest.fn());
     expect(addRes._body.ok).toBe(true);
     expect(addRes._body.data.cart_size).toBe(1);
 
@@ -148,8 +177,7 @@ describe('AgentDoor', () => {
       headers: { authorization: `Bearer ${token}` },
     });
     const viewRes = mockRes();
-    mw(viewReq, viewRes, jest.fn());
-    await new Promise(r => setTimeout(r, 50));
+    await mw(viewReq, viewRes, jest.fn());
     expect(viewRes._body.ok).toBe(true);
     expect(viewRes._body.data.items).toHaveLength(1);
     expect(viewRes._body.data.subtotal).toBe(56);
@@ -159,52 +187,95 @@ describe('AgentDoor', () => {
       headers: { authorization: `Bearer ${token}` },
     });
     const checkoutRes = mockRes();
-    mw(checkoutReq, checkoutRes, jest.fn());
-    await new Promise(r => setTimeout(r, 50));
+    await mw(checkoutReq, checkoutRes, jest.fn());
     expect(checkoutRes._body.ok).toBe(true);
     expect(checkoutRes._body.data.checkout_url).toContain('https://test.com/pay');
     expect(checkoutRes._body.data.human_handoff).toBe(true);
-  });
-
-  it('passes to next() for unmatched routes', () => {
-    const mw = createDoor();
-    const req = mockReq('GET', '/some/other/path');
-    const res = mockRes();
-    const next = jest.fn();
-
-    mw(req, res, next);
-
-    expect(next).toHaveBeenCalled();
   });
 
   it('handles detail with route params', async () => {
     const mw = createDoor();
     const req = mockReq('GET', '/.well-known/agents/api/detail/42');
     const res = mockRes();
-    const next = jest.fn();
-
-    mw(req, res, next);
-    await new Promise(r => setTimeout(r, 50));
+    await mw(req, res, jest.fn());
 
     expect(res._body.ok).toBe(true);
     expect(res._body.data.id).toBe('42');
   });
 
-  it('deletes a session', () => {
+  it('deletes a session', async () => {
     const mw = createDoor();
-
-    // Create session
     const createReq = mockReq('POST', '/.well-known/agents/api/session');
     const createRes = mockRes();
-    mw(createReq, createRes, jest.fn());
+    await mw(createReq, createRes, jest.fn());
     const token = createRes._body.data.session_token;
 
-    // Delete session
     const deleteReq = mockReq('DELETE', '/.well-known/agents/api/session', {
       headers: { authorization: `Bearer ${token}` },
     });
     const deleteRes = mockRes();
-    mw(deleteReq, deleteRes, jest.fn());
+    await mw(deleteReq, deleteRes, jest.fn());
     expect(deleteRes._body.ok).toBe(true);
+  });
+});
+
+describe('AgentDoor.fromOpenAPI', () => {
+  it('creates capabilities from an OpenAPI spec', async () => {
+    const spec = {
+      info: { title: 'Pet Store', description: 'A pet store API' },
+      servers: [{ url: 'https://pets.example.com' }],
+      paths: {
+        '/pets': {
+          get: {
+            operationId: 'listPets',
+            summary: 'List all pets',
+            parameters: [
+              { name: 'limit', in: 'query' as const, schema: { type: 'integer', default: 20 } },
+            ],
+          },
+          post: {
+            operationId: 'createPet',
+            summary: 'Create a pet',
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: {
+                    properties: { name: { type: 'string' }, species: { type: 'string' } },
+                    required: ['name'],
+                  },
+                },
+              },
+            },
+          },
+        },
+        '/pets/{id}': {
+          get: {
+            operationId: 'getPet',
+            summary: 'Get a pet by ID',
+            parameters: [
+              { name: 'id', in: 'path' as const, required: true, schema: { type: 'string' } },
+            ],
+          },
+        },
+      },
+    };
+
+    const door = AgentDoor.fromOpenAPI(spec, 'https://pets.example.com');
+    const agentsJson = door['agentsJson'] as any;
+
+    expect(agentsJson.site.name).toBe('Pet Store');
+    expect(agentsJson.capabilities).toHaveLength(3);
+
+    const listPets = agentsJson.capabilities.find((c: any) => c.name === 'listPets');
+    expect(listPets).toBeDefined();
+    expect(listPets.method).toBe('GET');
+    expect(listPets.params?.limit).toBeDefined();
+
+    const createPet = agentsJson.capabilities.find((c: any) => c.name === 'createPet');
+    expect(createPet).toBeDefined();
+    expect(createPet.method).toBe('POST');
+    expect(createPet.params?.name.required).toBe(true);
+
+    door.destroy();
   });
 });

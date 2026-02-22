@@ -234,4 +234,110 @@ describe('AgentClient', () => {
       expect(capturedHeaders['Authorization']).toBe(`Bearer ${SESSION.session_token}`);
     });
   });
+
+  describe('flows', () => {
+    it('returns flows from the manifest', async () => {
+      const client = new AgentClient(SITE_URL, { fetch: manifestFetch() });
+      const flows = await client.flows();
+      expect(flows).toHaveLength(1);
+      expect(flows[0].name).toBe('purchase');
+      expect(flows[0].steps).toEqual(['search', 'detail', 'cart.add', 'checkout']);
+    });
+
+    it('returns empty array when manifest has no flows', async () => {
+      const fetchImpl = mockFetch({ 'agents.json': () => ({ ...MANIFEST, flows: undefined }) });
+      const client = new AgentClient(SITE_URL, { fetch: fetchImpl });
+      const flows = await client.flows();
+      expect(flows).toEqual([]);
+    });
+  });
+
+  describe('paginate', () => {
+    it('yields pages until total is reached', async () => {
+      let page = 0;
+      const fetchImpl = manifestFetch({
+        '/browse': () => {
+          page++;
+          if (page === 1) return { ok: true, data: { items: [{ id: '1' }, { id: '2' }], total: 5 } };
+          if (page === 2) return { ok: true, data: { items: [{ id: '3' }, { id: '4' }], total: 5 } };
+          return { ok: true, data: { items: [{ id: '5' }], total: 5 } };
+        },
+      });
+      const client = new AgentClient(SITE_URL, { fetch: fetchImpl, pageSize: 2 });
+      const allItems: any[] = [];
+      for await (const items of client.paginate('browse')) {
+        allItems.push(...items);
+      }
+      expect(allItems).toHaveLength(5);
+      expect(allItems.map(i => i.id)).toEqual(['1', '2', '3', '4', '5']);
+    });
+
+    it('stops when items array is empty', async () => {
+      const fetchImpl = manifestFetch({
+        '/browse': () => ({ ok: true, data: { items: [], total: 0 } }),
+      });
+      const client = new AgentClient(SITE_URL, { fetch: fetchImpl });
+      const pages: any[][] = [];
+      for await (const items of client.paginate('browse')) {
+        pages.push(items);
+      }
+      expect(pages).toHaveLength(0);
+    });
+
+    it('auto-creates session for session-required capabilities', async () => {
+      let sessionCreated = false;
+      const fetchImpl = manifestFetch({
+        '/session': (_url, init) => {
+          if ((init?.method ?? 'GET') === 'POST') sessionCreated = true;
+          return { ok: true, data: SESSION };
+        },
+        '/cart/view': () => ({ ok: true, data: { items: [{ id: '1', quantity: 1 }], total: 1 } }),
+      });
+      const client = new AgentClient(SITE_URL, { fetch: fetchImpl });
+      // cart.view requires session — paginate should auto-connect
+      for await (const _items of client.paginate('cart.view')) { break; }
+      expect(sessionCreated).toBe(true);
+    });
+  });
+
+  describe('retry on 429', () => {
+    function buildFetchWithRateLimit(succeedAfterAttempts: number, counter: { n: number }): typeof fetch {
+      return async (input: any, init?: any): Promise<Response> => {
+        const url = input.toString();
+        if (url.includes('agents.json')) {
+          return new Response(JSON.stringify(MANIFEST), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (url.includes('/search')) {
+          counter.n++;
+          if (counter.n < succeedAfterAttempts) {
+            return new Response(JSON.stringify({ ok: false, error: 'Rate limit exceeded' }), { status: 429, headers: { 'Content-Type': 'application/json' } });
+          }
+          return new Response(JSON.stringify({ ok: true, data: [{ id: '1' }] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        return new Response(JSON.stringify({ ok: false, error: 'Not found' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+      };
+    }
+
+    it('retries and succeeds after rate limit clears', async () => {
+      const counter = { n: 0 };
+      const client = new AgentClient(SITE_URL, {
+        fetch: buildFetchWithRateLimit(3, counter),
+        maxRetries: 3,
+        retryDelay: 0,
+      });
+      const results = await client.call('search', { q: 'test' });
+      expect(results).toHaveLength(1);
+      expect(counter.n).toBe(3);
+    });
+
+    it('throws AgentClientError after exhausting retries', async () => {
+      const counter = { n: 0 };
+      const client = new AgentClient(SITE_URL, {
+        fetch: buildFetchWithRateLimit(999, counter), // never succeeds
+        maxRetries: 2,
+        retryDelay: 0,
+      });
+      await expect(client.call('search', { q: 'x' })).rejects.toThrow(AgentClientError);
+    });
+  });
 });

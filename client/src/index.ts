@@ -7,6 +7,7 @@ export type {
   AgentsSiteInfo,
   AgentsCapability,
   AgentsCapabilityParam,
+  AgentsFlow,
   AgentsSessionConfig,
   AgentsAuditConfig,
   AgentSession,

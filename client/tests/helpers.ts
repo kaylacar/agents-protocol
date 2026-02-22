@@ -18,7 +18,10 @@ export const MANIFEST: AgentsManifest = {
     { name: 'checkout', description: 'Checkout', method: 'POST', endpoint: `${API}/checkout`, requires_session: true, human_handoff: true },
     { name: 'contact', description: 'Contact', method: 'POST', endpoint: `${API}/contact` },
   ],
-  session: { create: `${API}/session`, ttl_seconds: 3600 },
+  flows: [
+    { name: 'purchase', description: 'Find and buy a product', steps: ['search', 'detail', 'cart.add', 'checkout'] },
+  ],
+  session: { create: `${API}/session`, delete: `${API}/session`, ttl_seconds: 3600 },
   rate_limit: { requests_per_minute: 60 },
   audit: { enabled: true, endpoint: `${API}/audit/:session_id` },
 };

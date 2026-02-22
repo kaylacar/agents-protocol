@@ -16,15 +16,23 @@ export interface AgentsCapabilityParam {
 export interface AgentsCapability {
   name: string;
   description: string;
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   endpoint: string;
   params?: Record<string, AgentsCapabilityParam>;
   requires_session?: boolean;
   human_handoff?: boolean;
 }
 
+/** Suggested step sequence for a common agent task */
+export interface AgentsFlow {
+  name: string;
+  description: string;
+  steps: string[];
+}
+
 export interface AgentsSessionConfig {
   create: string;
+  delete?: string;
   ttl_seconds?: number;
 }
 
@@ -38,6 +46,7 @@ export interface AgentsManifest {
   schema_version: string;
   site: AgentsSiteInfo;
   capabilities: AgentsCapability[];
+  flows?: AgentsFlow[];
   session: AgentsSessionConfig;
   rate_limit?: { requests_per_minute: number };
   audit?: AgentsAuditConfig;
@@ -88,4 +97,10 @@ export interface AgentClientConfig {
   userAgent?: string;
   /** Fetch implementation (defaults to global fetch) */
   fetch?: typeof fetch;
+  /** Maximum retries on 429 rate-limit responses. Default: 3 */
+  maxRetries?: number;
+  /** Base delay in ms for exponential backoff on retries. Default: 1000 */
+  retryDelay?: number;
+  /** Default page size for paginate(). Default: 20 */
+  pageSize?: number;
 }

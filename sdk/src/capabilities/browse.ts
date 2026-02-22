@@ -20,10 +20,10 @@ export function browse({ handler }: BrowseOptions): CapabilityDefinition {
       category: { type: 'string', required: false, description: 'Filter by category' },
     },
     handler: async (req) => {
-      const page = req.query.page ? parseInt(req.query.page as string, 10) : undefined;
-      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
-      const category = req.query.category as string | undefined;
-      const { page: _p, limit: _l, category: _c, ...filters } = req.query as Record<string, string>;
+      const page = req.query.page ? parseInt(req.query.page, 10) : undefined;
+      const limit = req.query.limit ? parseInt(req.query.limit, 10) : undefined;
+      const category = req.query.category;
+      const { page: _p, limit: _l, category: _c, ...filters } = req.query;
       return handler({ page, limit, category, filters });
     },
   };

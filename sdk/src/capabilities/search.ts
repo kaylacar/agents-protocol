@@ -14,11 +14,9 @@ export function search({ handler }: SearchOptions): CapabilityDefinition {
       limit: { type: 'number', required: false, description: 'Max results to return' },
     },
     handler: async (req) => {
-      const q = req.query.q as string;
-      if (!q) {
-        throw new Error('Missing required parameter: q');
-      }
-      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
+      const q = req.query.q;
+      if (!q) throw new Error('Missing required parameter: q');
+      const limit = req.query.limit ? parseInt(req.query.limit, 10) : undefined;
       return handler(q, { limit });
     },
   };

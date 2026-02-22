@@ -11,11 +11,9 @@ export function checkout({ onCheckout }: CheckoutOptions): CapabilityDefinition 
     method: 'POST',
     requiresSession: true,
     humanHandoff: true,
-    handler: async (_req, _res, session) => {
+    handler: async (_req, session) => {
       const items = session!.cartItems;
-      if (items.length === 0) {
-        throw new Error('Cart is empty');
-      }
+      if (items.length === 0) throw new Error('Cart is empty');
       const result = await onCheckout(items);
       return { checkout_url: result.checkout_url, human_handoff: true };
     },

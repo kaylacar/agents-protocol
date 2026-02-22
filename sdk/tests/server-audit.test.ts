@@ -1,8 +1,7 @@
 import { AgentDoor } from '../src/server';
 import { search, cart, checkout } from '../src/capabilities';
-import type { Request, Response } from 'express';
 
-function mockReq(method: string, path: string, opts?: { body?: any; query?: Record<string, string>; headers?: Record<string, string>; ip?: string }): Request {
+function mockReq(method: string, path: string, opts?: { body?: any; query?: Record<string, string>; headers?: Record<string, string>; ip?: string }): any {
   return {
     method,
     path,
@@ -12,20 +11,21 @@ function mockReq(method: string, path: string, opts?: { body?: any; query?: Reco
     headers: opts?.headers ?? {},
     ip: opts?.ip ?? '127.0.0.1',
     socket: { remoteAddress: '127.0.0.1' },
-  } as any;
+  };
 }
 
-function mockRes(): Response & { _status: number; _body: any; _headers: Record<string, any>; headersSent: boolean } {
+function mockRes(): any {
   const res: any = {
     _status: 200,
     _body: null,
-    _headers: {},
+    _headers: {} as Record<string, any>,
     headersSent: false,
     status(code: number) { res._status = code; return res; },
     json(body: any) { res._body = body; res.headersSent = true; return res; },
     send(body: any) { res._body = body; res.headersSent = true; return res; },
     type(t: string) { res._headers['content-type'] = t; return res; },
-    setHeader(k: string, v: any) { res._headers[k] = v; return res; },
+    setHeader(k: string, v: any) { res._headers[k.toLowerCase()] = v; return res; },
+    getHeader(k: string) { return res._headers[k.toLowerCase()]; },
     end() { res.headersSent = true; return res; },
   };
   return res;
@@ -53,11 +53,11 @@ describe('AgentDoor with audit: true', () => {
     return door.middleware();
   }
 
-  it('session creation response includes audit: true', () => {
+  it('session creation response includes audit: true', async () => {
     const mw = createDoor();
     const req = mockReq('POST', '/.well-known/agents/api/session');
     const res = mockRes();
-    mw(req, res, jest.fn());
+    await mw(req, res, jest.fn());
 
     expect(res._body.ok).toBe(true);
     expect(res._body.data.audit).toBe(true);
@@ -69,7 +69,7 @@ describe('AgentDoor with audit: true', () => {
     // Create session
     const sessionReq = mockReq('POST', '/.well-known/agents/api/session');
     const sessionRes = mockRes();
-    mw(sessionReq, sessionRes, jest.fn());
+    await mw(sessionReq, sessionRes, jest.fn());
     const token = sessionRes._body.data.session_token;
 
     // Search (logged by RER)
@@ -78,8 +78,7 @@ describe('AgentDoor with audit: true', () => {
       headers: { authorization: `Bearer ${token}` },
     });
     const searchRes = mockRes();
-    mw(searchReq, searchRes, jest.fn());
-    await new Promise(r => setTimeout(r, 100));
+    await mw(searchReq, searchRes, jest.fn());
     expect(searchRes._body.ok).toBe(true);
 
     // End session (seals artifact)
@@ -87,13 +86,13 @@ describe('AgentDoor with audit: true', () => {
       headers: { authorization: `Bearer ${token}` },
     });
     const endRes = mockRes();
-    mw(endReq, endRes, jest.fn());
+    await mw(endReq, endRes, jest.fn());
     expect(endRes._body.ok).toBe(true);
 
     // Retrieve audit artifact
     const auditReq = mockReq('GET', `/.well-known/agents/api/audit/${token}`);
     const auditRes = mockRes();
-    mw(auditReq, auditRes, jest.fn());
+    await mw(auditReq, auditRes, jest.fn());
 
     expect(auditRes._body.ok).toBe(true);
     expect(auditRes._body.data.run_id).toBeDefined();
@@ -102,32 +101,32 @@ describe('AgentDoor with audit: true', () => {
     expect(auditRes._body.data.envelope).toBeDefined();
   });
 
-  it('audit endpoint returns 404 for unknown session', () => {
+  it('audit endpoint returns 404 for unknown session', async () => {
     const mw = createDoor();
     const req = mockReq('GET', '/.well-known/agents/api/audit/nonexistent');
     const res = mockRes();
-    mw(req, res, jest.fn());
+    await mw(req, res, jest.fn());
 
     expect(res._status).toBe(404);
     expect(res._body.ok).toBe(false);
   });
 
-  it('CORS headers are set on responses', () => {
+  it('CORS headers are set on responses', async () => {
     const mw = createDoor();
     const req = mockReq('GET', '/.well-known/agents.txt');
     const res = mockRes();
-    mw(req, res, jest.fn());
+    await mw(req, res, jest.fn());
 
-    expect(res._headers['Access-Control-Allow-Origin']).toBe('*');
-    expect(res._headers['Access-Control-Allow-Methods']).toContain('GET');
-    expect(res._headers['Access-Control-Allow-Headers']).toContain('Authorization');
+    expect(res._headers['access-control-allow-origin']).toBe('*');
+    expect(res._headers['access-control-allow-methods']).toContain('GET');
+    expect(res._headers['access-control-allow-headers']).toContain('Authorization');
   });
 
-  it('OPTIONS requests get 204 (CORS preflight)', () => {
+  it('OPTIONS requests get 204 (CORS preflight)', async () => {
     const mw = createDoor();
     const req = mockReq('OPTIONS', '/.well-known/agents/api/search');
     const res = mockRes();
-    mw(req, res, jest.fn());
+    await mw(req, res, jest.fn());
 
     expect(res._status).toBe(204);
   });
@@ -138,7 +137,7 @@ describe('AgentDoor with audit: true', () => {
     // Create session
     const sessionReq = mockReq('POST', '/.well-known/agents/api/session');
     const sessionRes = mockRes();
-    mw(sessionReq, sessionRes, jest.fn());
+    await mw(sessionReq, sessionRes, jest.fn());
     const token = sessionRes._body.data.session_token;
 
     // Add to cart
@@ -147,19 +146,18 @@ describe('AgentDoor with audit: true', () => {
       headers: { authorization: `Bearer ${token}` },
     });
     const addRes = mockRes();
-    mw(addReq, addRes, jest.fn());
-    await new Promise(r => setTimeout(r, 100));
+    await mw(addReq, addRes, jest.fn());
 
     // End and check artifact
     const endReq = mockReq('DELETE', '/.well-known/agents/api/session', {
       headers: { authorization: `Bearer ${token}` },
     });
     const endRes = mockRes();
-    mw(endReq, endRes, jest.fn());
+    await mw(endReq, endRes, jest.fn());
 
     const auditReq = mockReq('GET', `/.well-known/agents/api/audit/${token}`);
     const auditRes = mockRes();
-    mw(auditReq, auditRes, jest.fn());
+    await mw(auditReq, auditRes, jest.fn());
 
     const events = auditRes._body.data.events;
     const toolCalledEvents = events.filter((e: any) => e.header.event_type === 'ToolCalled');

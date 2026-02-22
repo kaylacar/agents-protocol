@@ -13,10 +13,8 @@ export function detail({ handler }: DetailOptions): CapabilityDefinition {
       id: { type: 'string', required: true, description: 'Item identifier' },
     },
     handler: async (req) => {
-      const id = req.params.id;
-      if (!id) {
-        throw new Error('Missing required parameter: id');
-      }
+      const id = req.params.id ?? req.query.id;
+      if (!id) throw new Error('Missing required parameter: id');
       return handler(id);
     },
   };

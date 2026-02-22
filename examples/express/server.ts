@@ -23,12 +23,13 @@ const door = new AgentDoor({
     description: 'Handmade ceramics — mugs, bowls, vases, and more',
     contact: 'hello@ceramicstudio.example',
   },
+
   capabilities: [
     search({
       handler: async (query, opts) => {
         const q = query.toLowerCase();
         let results = products.filter(
-          p => p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q)
+          p => p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q),
         );
         if (opts?.limit) results = results.slice(0, opts.limit);
         return results;
@@ -38,9 +39,7 @@ const door = new AgentDoor({
     browse({
       handler: async (opts) => {
         let items = [...products];
-        if (opts?.category) {
-          items = items.filter(p => p.category === opts.category);
-        }
+        if (opts?.category) items = items.filter(p => p.category === opts.category);
         const total = items.length;
         const page = opts?.page ?? 1;
         const limit = opts?.limit ?? 20;
@@ -61,7 +60,6 @@ const door = new AgentDoor({
 
     checkout({
       onCheckout: async (items) => {
-        // In a real app, create a Stripe session or similar
         const total = items.reduce((sum, i) => sum + (i.price ?? 0) * i.quantity, 0);
         const fakeId = Math.random().toString(36).slice(2, 10);
         return { checkout_url: `http://localhost:3000/checkout/${fakeId}?total=${total}` };
@@ -75,23 +73,47 @@ const door = new AgentDoor({
       },
     }),
   ],
+
+  // Suggested flows — agents read these to know the happy path without guessing
+  flows: [
+    {
+      name: 'purchase',
+      description: 'Find a product and get a checkout link for the human to complete payment',
+      steps: ['search', 'detail', 'cart.add', 'checkout'],
+    },
+    {
+      name: 'browse_and_buy',
+      description: 'Browse by category, pick an item, and check out',
+      steps: ['browse', 'detail', 'cart.add', 'cart.view', 'checkout'],
+    },
+    {
+      name: 'inquiry',
+      description: 'Ask a question about a product or the store',
+      steps: ['search', 'contact'],
+    },
+  ],
+
   rateLimit: 60,
   sessionTtl: 1800,
 });
 
+// Agent Door middleware serves /.well-known/* and auto-injects:
+//   - Link: </.well-known/agents.json>; rel="agents" header on ALL responses
+//   - <link rel="agents" href="/.well-known/agents.json"> into any HTML pages
 app.use(door.middleware());
 
 // Human-facing checkout page (the handoff destination)
 app.get('/checkout/:id', (req, res) => {
-  res.send(`<h1>Complete Your Purchase</h1><p>Order ${req.params.id} — total: $${req.query.total}</p>`);
+  res.send(`<html><head><title>Checkout</title></head><body><h1>Complete Your Purchase</h1><p>Order ${req.params.id} — total: $${req.query.total}</p></body></html>`);
 });
 
 app.get('/', (_req, res) => {
-  res.send('Ceramic Studio — visit /.well-known/agents.txt to discover agent capabilities');
+  res.send(`<html><head><title>Ceramic Studio</title></head><body><h1>Ceramic Studio</h1><p>Visit <a href="/.well-known/agents.txt">/.well-known/agents.txt</a> to discover agent capabilities.</p></body></html>`);
 });
 
 const port = process.env.PORT ?? 3000;
 app.listen(port, () => {
   console.log(`Ceramic Studio running on http://localhost:${port}`);
-  console.log(`Agent discovery: http://localhost:${port}/.well-known/agents.txt`);
+  console.log(`Discovery:  http://localhost:${port}/.well-known/agents.txt`);
+  console.log(`Agents JSON: http://localhost:${port}/.well-known/agents.json`);
 });
