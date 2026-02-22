@@ -98,9 +98,9 @@ export class AgentDoor {
           const required = new Set(bodySchema.required ?? []);
           for (const [propName, prop] of Object.entries(bodySchema.properties)) {
             params[propName] = {
-              type: (prop as any).type ?? 'string',
+              type: prop.type ?? 'string',
               required: required.has(propName),
-              description: (prop as any).description,
+              description: prop.description,
             };
           }
         }

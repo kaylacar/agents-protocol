@@ -12,6 +12,7 @@ export class RateLimiter {
 
   constructor() {
     this.cleanupInterval = setInterval(() => this.cleanup(), 30_000);
+    if (this.cleanupInterval.unref) this.cleanupInterval.unref();
   }
 
   checkRateLimit(key: string, limit: number): { allowed: boolean; remaining: number; resetAt: number } {
