@@ -1,0 +1,116 @@
+import { AuditManager } from '../src/audit';
+
+describe('AuditManager', () => {
+  let audit: AuditManager;
+
+  afterEach(() => {
+    audit?.destroy();
+  });
+
+  it('generates a key pair on construction', () => {
+    audit = new AuditManager();
+    expect(audit.getPublicKey()).toBeInstanceOf(Buffer);
+    expect(audit.getPublicKey().length).toBeGreaterThan(0);
+  });
+
+  it('starts a session and creates a runtime', () => {
+    audit = new AuditManager(3600);
+    // Should not throw
+    audit.startSession('token-1', 'https://test.com', ['search', 'browse']);
+  });
+
+  it('logs capability calls through the runtime', async () => {
+    audit = new AuditManager(3600);
+    audit.startSession('token-1', 'https://test.com', ['search']);
+
+    const result = await audit.callCapability(
+      'token-1',
+      'search',
+      { q: 'mugs' },
+      async () => [{ id: '1', name: 'Blue Mug' }],
+    );
+
+    expect(result).toEqual([{ id: '1', name: 'Blue Mug' }]);
+  });
+
+  it('produces a signed artifact when session ends', async () => {
+    audit = new AuditManager(3600);
+    audit.startSession('token-1', 'https://test.com', ['search']);
+
+    await audit.callCapability(
+      'token-1',
+      'search',
+      { q: 'test' },
+      async () => [{ id: '1' }],
+    );
+
+    const artifact = audit.endSession('token-1');
+    expect(artifact).not.toBeNull();
+    expect(artifact!.run_id).toBeDefined();
+    expect(artifact!.envelope).toBeDefined();
+    expect(artifact!.events).toBeInstanceOf(Array);
+    expect(artifact!.events.length).toBeGreaterThan(0);
+    expect(artifact!.runtime_signature).toBeDefined();
+    expect(artifact!.runtime_signature.length).toBeGreaterThan(0);
+  });
+
+  it('stores artifact for retrieval after session ends', async () => {
+    audit = new AuditManager(3600);
+    audit.startSession('token-1', 'https://test.com', ['search']);
+
+    await audit.callCapability('token-1', 'search', { q: 'x' }, async () => []);
+    audit.endSession('token-1');
+
+    const artifact = audit.getArtifact('token-1');
+    expect(artifact).not.toBeNull();
+    expect(artifact!.events.length).toBeGreaterThan(0);
+  });
+
+  it('returns null for unknown session artifacts', () => {
+    audit = new AuditManager();
+    expect(audit.getArtifact('nonexistent')).toBeNull();
+  });
+
+  it('falls through to handler when no runtime exists', async () => {
+    audit = new AuditManager();
+    // Don't start a session — callCapability should just run the handler
+    const result = await audit.callCapability(
+      'no-session',
+      'search',
+      {},
+      async () => 'direct-result',
+    );
+    expect(result).toBe('direct-result');
+  });
+
+  it('logs multiple capability calls in sequence', async () => {
+    audit = new AuditManager(3600);
+    audit.startSession('token-1', 'https://test.com', ['search', 'browse']);
+
+    await audit.callCapability('token-1', 'search', { q: 'a' }, async () => [1]);
+    await audit.callCapability('token-1', 'browse', {}, async () => ({ items: [2], total: 1 }));
+    await audit.callCapability('token-1', 'search', { q: 'b' }, async () => [3]);
+
+    const artifact = audit.endSession('token-1');
+    expect(artifact).not.toBeNull();
+
+    // RunStarted + 3x (PolicyEvaluated + ToolCalled + ToolReturned) + RunEnded
+    // = 1 + 3*3 + 1 = 11 events
+    expect(artifact!.events.length).toBe(11);
+  });
+
+  it('artifact events form a valid hash chain', async () => {
+    audit = new AuditManager(3600);
+    audit.startSession('token-1', 'https://test.com', ['search']);
+
+    await audit.callCapability('token-1', 'search', { q: 'test' }, async () => []);
+    const artifact = audit.endSession('token-1');
+
+    // Verify hash chain: each event's parent_event_hash points to previous event's event_hash
+    const events = artifact!.events;
+    expect(events[0].header.parent_event_hash).toBeNull(); // First event has no parent
+    for (let i = 1; i < events.length; i++) {
+      expect(events[i].header.parent_event_hash).toBe(events[i - 1].header.event_hash);
+    }
+  });
+});

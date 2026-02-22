@@ -1,0 +1,199 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://agents-protocol.org/schemas/agents.schema.json",
+  "title": "agents.json",
+  "description": "Machine-readable capability declaration for the agents.txt protocol.",
+  "type": "object",
+  "required": ["protocol_version", "site", "capabilities"],
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": {
+      "type": "string",
+      "description": "Semantic version of the agents.txt protocol this file conforms to.",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "examples": ["0.1.0"]
+    },
+    "site": {
+      "type": "object",
+      "description": "Identity and contact information for the site.",
+      "required": ["name", "url"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Human-readable site name.",
+          "examples": ["Acme Ceramics"]
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Canonical site URL.",
+          "examples": ["https://acmeceramics.example.com"]
+        },
+        "description": {
+          "type": "string",
+          "description": "One-line description of what the site does.",
+          "examples": ["Handmade ceramic mugs, bowls, and vases"]
+        },
+        "contact": {
+          "type": "string",
+          "description": "Contact email or URL for the site operator.",
+          "examples": ["support@acmeceramics.example.com"]
+        }
+      }
+    },
+    "capabilities": {
+      "type": "array",
+      "description": "List of capabilities the site exposes to agents.",
+      "items": {
+        "$ref": "#/definitions/capability"
+      },
+      "minItems": 1
+    },
+    "session": {
+      "type": "object",
+      "description": "Session configuration. Required if any capability has requires_session: true.",
+      "additionalProperties": false,
+      "properties": {
+        "endpoint": {
+          "type": "string",
+          "description": "URL to create a session. Default: /.well-known/agents/api/session",
+          "examples": ["/.well-known/agents/api/session"]
+        },
+        "ttl": {
+          "type": "integer",
+          "description": "Session time-to-live in seconds.",
+          "default": 1800,
+          "minimum": 60,
+          "examples": [1800, 3600]
+        }
+      }
+    },
+    "rate_limit": {
+      "type": "object",
+      "description": "Rate limiting configuration.",
+      "additionalProperties": false,
+      "properties": {
+        "max_requests_per_minute": {
+          "type": "integer",
+          "description": "Maximum requests per minute across all endpoints.",
+          "minimum": 1,
+          "examples": [60]
+        },
+        "max_sessions": {
+          "type": "integer",
+          "description": "Maximum concurrent sessions per agent.",
+          "minimum": 1,
+          "examples": [5]
+        }
+      }
+    },
+    "audit": {
+      "type": "object",
+      "description": "Audit trail configuration (RER integration).",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Whether audit trails are produced for sessions.",
+          "default": false
+        },
+        "endpoint": {
+          "type": "string",
+          "description": "URL to retrieve audit artifacts. Default: /.well-known/agents/api/audit",
+          "examples": ["/.well-known/agents/api/audit"]
+        },
+        "public_key": {
+          "type": "string",
+          "description": "Base64-encoded Ed25519 public key used to sign audit artifacts. Allows offline verification."
+        }
+      }
+    },
+    "docs_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to human-readable documentation for the site's agent integration."
+    }
+  },
+  "definitions": {
+    "capability": {
+      "type": "object",
+      "description": "A single capability the site exposes.",
+      "required": ["name", "endpoint", "method"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Capability identifier (e.g., 'search', 'cart.add').",
+          "pattern": "^[a-z][a-z0-9_.]*$",
+          "examples": ["search", "cart.add"]
+        },
+        "description": {
+          "type": "string",
+          "description": "What this capability does, in plain language.",
+          "examples": ["Search the product catalog"]
+        },
+        "endpoint": {
+          "type": "string",
+          "description": "URL path for this capability, relative to the site origin.",
+          "examples": ["/.well-known/agents/api/search"]
+        },
+        "method": {
+          "type": "string",
+          "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"],
+          "description": "HTTP method for this capability."
+        },
+        "params": {
+          "type": "object",
+          "description": "Parameter schema. Keys are parameter names; values describe type and constraints.",
+          "additionalProperties": {
+            "$ref": "#/definitions/param"
+          }
+        },
+        "requires_session": {
+          "type": "boolean",
+          "description": "Whether this capability requires an active session.",
+          "default": false
+        },
+        "human_handoff": {
+          "type": "boolean",
+          "description": "Whether this capability returns a URL for a human to complete the action.",
+          "default": false
+        }
+      }
+    },
+    "param": {
+      "type": "object",
+      "description": "Describes a single parameter for a capability.",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["string", "number", "integer", "boolean", "array", "object"],
+          "description": "Data type of the parameter."
+        },
+        "description": {
+          "type": "string",
+          "description": "What this parameter does."
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Whether this parameter is required.",
+          "default": false
+        },
+        "default": {
+          "description": "Default value if the parameter is omitted."
+        },
+        "enum": {
+          "type": "array",
+          "description": "Allowed values."
+        },
+        "items": {
+          "type": "object",
+          "description": "Schema for array items (when type is 'array')."
+        }
+      }
+    }
+  }
+}
