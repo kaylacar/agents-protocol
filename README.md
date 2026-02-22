@@ -44,6 +44,38 @@ app.listen(3000);
 
 That's it. Your site now serves `agents.txt`, `agents.json`, and all the API routes. With `audit: true`, every session produces a signed artifact ([RER](https://github.com/kaylacar/rer)) that proves exactly what the agent did.
 
+### Next.js / Cloudflare Workers / Deno
+
+Use `handler()` instead of `middleware()` for fetch-compatible runtimes:
+
+```typescript
+const door = new AgentDoor({ ... });
+
+// Next.js App Router
+export const GET = door.handler();
+export const POST = door.handler();
+
+// Cloudflare Worker
+export default { fetch: door.handler() };
+```
+
+### Wrap an existing API with no handler code
+
+If you already have an OpenAPI 3.x spec, point `fromOpenAPI` at it and your site is agent-ready with zero capability code:
+
+```typescript
+const spec = await fetch('https://api.example.com/openapi.json').then(r => r.json());
+
+const door = AgentDoor.fromOpenAPI(spec, 'https://api.example.com', {
+  site: { name: 'My API', url: 'https://example.com' },
+  audit: true,
+});
+
+app.use(door.middleware());
+```
+
+Capabilities are inferred from the spec's paths and forwarded directly to `baseUrl`.
+
 ---
 
 ## Client — talk to any agents-protocol site
