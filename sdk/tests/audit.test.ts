@@ -9,8 +9,12 @@ describe('AuditManager', () => {
 
   it('generates a key pair on construction', () => {
     audit = new AuditManager();
-    expect(audit.getPublicKey()).toBeInstanceOf(Buffer);
-    expect(audit.getPublicKey().length).toBeGreaterThan(0);
+    // DER form: 44-byte Buffer (12-byte ASN.1 prefix + 32 raw bytes)
+    expect(audit.getPublicKeyDER()).toBeInstanceOf(Buffer);
+    expect(audit.getPublicKeyDER().length).toBe(44);
+    // Raw form: 32-byte Uint8Array for @rer/evidence safeVerify()
+    expect(audit.getPublicKeyRaw()).toBeInstanceOf(Uint8Array);
+    expect(audit.getPublicKeyRaw().length).toBe(32);
   });
 
   it('starts a session and creates a runtime', () => {
@@ -97,6 +101,22 @@ describe('AuditManager', () => {
     // RunStarted + 3x (PolicyEvaluated + ToolCalled + ToolReturned) + RunEnded
     // = 1 + 3*3 + 1 = 11 events
     expect(artifact!.events.length).toBe(11);
+  });
+
+  it('propagates PolicyDeniedError and does not run the handler', async () => {
+    audit = new AuditManager(3600);
+    // Start session with no capabilities allowed so any callTool triggers a denial
+    audit.startSession('token-deny', 'https://test.com', []);
+
+    let handlerRan = false;
+    await expect(
+      audit.callCapability('token-deny', 'blocked-tool', {}, async () => {
+        handlerRan = true;
+        return 'should-not-reach';
+      }),
+    ).rejects.toThrow();
+
+    expect(handlerRan).toBe(false);
   });
 
   it('artifact events form a valid hash chain', async () => {

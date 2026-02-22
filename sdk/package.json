@@ -12,7 +12,8 @@
     "test": "jest"
   },
   "dependencies": {
-    "rer": "file:../../rer",
+    "@rer/core": "file:../../rer/packages/core",
+    "@rer/runtime": "file:../../rer/packages/runtime",
     "uuid": "^9.0.0"
   },
   "peerDependencies": {
