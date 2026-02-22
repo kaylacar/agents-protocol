@@ -10,7 +10,7 @@ export interface AgentRequest {
   method: string;
   path: string;
   query: Record<string, string>;
-  body: Record<string, any>;
+  body: Record<string, unknown>;
   params: Record<string, string>;
   headers: Record<string, string>;
   ip?: string;
@@ -20,10 +20,10 @@ export interface CapabilityDefinition {
   name: string;
   description: string;
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
-  params?: Record<string, { type: string; required?: boolean; description?: string; default?: any; enum?: any[] }>;
+  params?: Record<string, { type: string; required?: boolean; description?: string; default?: unknown; enum?: unknown[] }>;
   requiresSession?: boolean;
   humanHandoff?: boolean;
-  handler: (req: AgentRequest, session?: SessionData | null) => Promise<any>;
+  handler: (req: AgentRequest, session?: SessionData | null) => Promise<unknown>;
 }
 
 /** Suggested step sequence for a common agent task */
@@ -63,7 +63,7 @@ export interface CartItem {
   name?: string;
   quantity: number;
   price?: number;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 /** OpenAPI 3.x subset used by AgentDoor.fromOpenAPI() */
@@ -78,7 +78,7 @@ export interface OpenAPISpec {
       in: 'query' | 'path' | 'header' | 'cookie';
       required?: boolean;
       description?: string;
-      schema?: { type?: string; enum?: any[]; default?: any };
+      schema?: { type?: string; enum?: unknown[]; default?: unknown };
     }>;
     requestBody?: {
       content?: {

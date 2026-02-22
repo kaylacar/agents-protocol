@@ -14,19 +14,19 @@ export function cart(): CapabilityDefinition[] {
     },
     handler: async (req, session) => {
       const { item_id, quantity, name, price } = req.body;
-      if (!item_id || quantity == null) {
+      if (typeof item_id !== 'string' || typeof quantity !== 'number') {
         throw new Error('Missing required parameters: item_id, quantity');
       }
 
       const existing = session!.cartItems.find(i => i.itemId === item_id);
       if (existing) {
         existing.quantity += quantity;
-        if (name) existing.name = name;
-        if (price != null) existing.price = price;
+        if (typeof name === 'string') existing.name = name;
+        if (typeof price === 'number') existing.price = price;
       } else {
         const item: CartItem = { itemId: item_id, quantity };
-        if (name) item.name = name;
-        if (price != null) item.price = price;
+        if (typeof name === 'string') item.name = name;
+        if (typeof price === 'number') item.price = price;
         session!.cartItems.push(item);
       }
 
@@ -57,7 +57,7 @@ export function cart(): CapabilityDefinition[] {
     },
     handler: async (req, session) => {
       const { item_id, quantity } = req.body;
-      if (!item_id || quantity == null) {
+      if (typeof item_id !== 'string' || typeof quantity !== 'number') {
         throw new Error('Missing required parameters: item_id, quantity');
       }
 
@@ -78,8 +78,9 @@ export function cart(): CapabilityDefinition[] {
       item_id: { type: 'string', required: true, description: 'Item ID to remove' },
     },
     handler: async (req, session) => {
-      const item_id = req.body?.item_id || req.query.item_id;
-      if (!item_id) throw new Error('Missing required parameter: item_id');
+      const raw = req.body.item_id ?? req.query.item_id;
+      if (typeof raw !== 'string' || !raw) throw new Error('Missing required parameter: item_id');
+      const item_id = raw;
 
       const index = session!.cartItems.findIndex(i => i.itemId === item_id);
       if (index === -1) throw new Error(`Item not found in cart: ${item_id}`);

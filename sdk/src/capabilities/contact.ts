@@ -16,7 +16,8 @@ export function contact({ handler }: ContactOptions): CapabilityDefinition {
     },
     handler: async (req) => {
       const { name, email, message } = req.body;
-      if (!name || !email || !message) {
+      if (typeof name !== 'string' || typeof email !== 'string' || typeof message !== 'string'
+          || !name || !email || !message) {
         throw new Error('Missing required parameters: name, email, message');
       }
       await handler({ name, email, message });

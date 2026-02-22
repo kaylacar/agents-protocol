@@ -2,6 +2,9 @@ interface WindowEntry {
   timestamps: number[];
 }
 
+/** Reject new IPs once this many distinct keys are tracked (OOM guard). */
+const MAX_ENTRIES = 10_000;
+
 export class RateLimiter {
   private windows = new Map<string, WindowEntry>();
   private cleanupInterval: ReturnType<typeof setInterval>;
@@ -17,6 +20,10 @@ export class RateLimiter {
 
     let entry = this.windows.get(key);
     if (!entry) {
+      if (this.windows.size >= MAX_ENTRIES) {
+        // Map is full — treat unknown IPs as rate-limited to prevent OOM.
+        return { allowed: false, remaining: 0, resetAt: now + this.windowMs };
+      }
       entry = { timestamps: [] };
       this.windows.set(key, entry);
     }
