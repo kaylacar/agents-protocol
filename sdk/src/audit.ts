@@ -44,10 +44,15 @@ interface SessionEntry {
   expiresAt: number; // ms since epoch
 }
 
+interface ArtifactEntry {
+  artifact: RuntimeRunArtifact;
+  expiresAt: number; // ms since epoch — evicted after one additional TTL window
+}
+
 export class AuditManager {
   private keyPair: Ed25519KeyPair;
   private sessions = new Map<string, SessionEntry>();
-  private artifacts = new Map<string, RuntimeRunArtifact>();
+  private artifacts = new Map<string, ArtifactEntry>();
   private pendingHandlers = new Map<string, Array<() => Promise<unknown>>>();
   private ttlSeconds: number;
   private cleanupTimer: ReturnType<typeof setInterval>;
@@ -63,6 +68,11 @@ export class AuditManager {
   }
 
   startSession(sessionToken: string, siteUrl: string, capabilityNames: string[]): void {
+    // Gracefully seal any existing session for this token before overwriting.
+    if (this.sessions.has(sessionToken)) {
+      this.endSession(sessionToken);
+    }
+
     const runId = uuidv4();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + this.ttlSeconds * 1000);
@@ -178,7 +188,7 @@ export class AuditManager {
       return null;
     }
 
-    this.artifacts.set(sessionToken, artifact);
+    this.artifacts.set(sessionToken, { artifact, expiresAt: Date.now() + this.ttlSeconds * 1000 });
     this.sessions.delete(sessionToken);
     this.clearPendingHandlers(sessionToken);
 
@@ -186,7 +196,7 @@ export class AuditManager {
   }
 
   getArtifact(sessionToken: string): RuntimeRunArtifact | null {
-    return this.artifacts.get(sessionToken) ?? null;
+    return this.artifacts.get(sessionToken)?.artifact ?? null;
   }
 
   /**
@@ -212,7 +222,7 @@ export class AuditManager {
       try {
         entry.runtime.end('completed', 'Shutdown');
         const artifact = entry.runtime.buildArtifact();
-        this.artifacts.set(token, artifact);
+        this.artifacts.set(token, { artifact, expiresAt: Date.now() + this.ttlSeconds * 1000 });
       } catch {
         // Best-effort on shutdown
       }
@@ -228,12 +238,18 @@ export class AuditManager {
         try {
           entry.runtime.end('completed', 'TTL expired');
           const artifact = entry.runtime.buildArtifact();
-          this.artifacts.set(token, artifact);
+          this.artifacts.set(token, { artifact, expiresAt: now + this.ttlSeconds * 1000 });
         } catch {
           // ignore
         }
         this.sessions.delete(token);
         this.clearPendingHandlers(token);
+      }
+    }
+    // Evict sealed artifacts whose retention window has elapsed.
+    for (const [token, entry] of this.artifacts) {
+      if (now >= entry.expiresAt) {
+        this.artifacts.delete(token);
       }
     }
   }
