@@ -1,32 +1,24 @@
 # agents-protocol
 
-`agents.txt` is to AI agents what `robots.txt` is to crawlers — except instead of blocking bots, it tells AI agents what they can *do* on your site, and every action is cryptographically logged.
+The execution layer for AI agent interactions on the web.
+
+`agents.txt` declares what agents can do on a site. `agents-protocol` defines how compliant interaction actually works — typed capability handlers, session management, auth, rate limiting, and cryptographic audit trails. It is the SDK that turns static declarations into live, governed API surfaces.
 
 ---
 
-## The easy path — 5 minutes, no install
+## Why agents-protocol on top of agents.txt?
 
-Create a file at `/.well-known/agents.txt` on your site:
+`agents.txt` is a file. It declares endpoints, protocols, and permissions. But declaration alone does not guarantee compliant behavior. Without shared execution semantics, every agent and every site implements its own interpretation of the contract.
 
-```
-# agents.txt — Agent Interaction Protocol v0.1
-
-Name: My Store
-URL: https://example.com
-Description: An online store selling handmade ceramics
-Contact: hello@example.com
-
-Capabilities: search, browse, contact
-Rate-Limit: 60/minute
-```
-
-That's it. Agents can now discover your site. No code, no dependencies, no server changes — just a file at a well-known path.
-
-For sites that want to go further (sessions, cart, live API calls), keep reading.
+`agents-protocol` closes that gap. It provides:
+- A typed SDK so sites expose capabilities with consistent semantics
+- A typed client so agents consume those capabilities correctly
+- Session lifecycle, auth handling, and rate limiting built in
+- Optional cryptographic audit trails via [RER](https://github.com/kaylacar/rer) — signed proof of every action
 
 ---
 
-## The full path — SDK with live capabilities
+## SDK — serve live capabilities
 
 ```
 npm install @agents-protocol/sdk     # for site owners
@@ -144,11 +136,22 @@ The client reads `agents.json` on first use and caches it. `connect()` creates a
 
 ---
 
-## Standard
+## The Stack
 
-This SDK implements the [agents.txt open standard](https://github.com/kaylacar/agents-txt). The standard defines the `/.well-known/agents.txt` and `/.well-known/agents.json` formats, the IANA well-known URI registrations, and the formal specification. If you need the lightweight parser/generator only (without the full SDK), use `@agents-txt/core` from that repo.
+These four repos form a governance pipeline for AI agents on the internet: **declared, executed, proven.**
 
-For AI policy declaration (training rights, licensing, per-agent permissions), see the companion standard [ai.txt](https://github.com/kaylacar/ai-txt). The two standards are complementary — `agents.txt` declares capabilities, `ai.txt` declares policy. Both can be served from the same site.
+| Repo | Purpose |
+|------|---------|
+| [agents.txt](https://github.com/kaylacar/agents-txt) | Declares what agents can do on a site |
+| [ai.txt](https://github.com/kaylacar/ai-txt) | Declares AI policy — training, licensing, attribution |
+| **[agents-protocol](https://github.com/kaylacar/agents-protocol)** | **Execution SDK — how agents perform declared actions** |
+| [rer](https://github.com/kaylacar/rer) | Cryptographic proof of what agents actually did |
+
+```
+declared (agents.txt / ai.txt) → executed (agents-protocol) → proven (rer)
+```
+
+All four are by the same author and designed to work together.
 
 ## Spec
 
