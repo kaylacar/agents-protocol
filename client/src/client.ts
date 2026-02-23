@@ -114,7 +114,7 @@ export class AgentClient {
   async cartAdd(itemId: string, quantity: number, meta?: { name?: string; price?: number }): Promise<{ item_id: string; quantity: number; cart_size: number }> {
     await this.requireSession();
     const cap = await this.requireCapability('cart.add');
-    const res = await request(cap.endpoint, {
+    const res = await request<{ item_id: string; quantity: number; cart_size: number }>(cap.endpoint, {
       method: 'POST',
       body: { item_id: itemId, quantity, ...meta },
       headers: this.authHeaders(),
@@ -139,7 +139,7 @@ export class AgentClient {
   async cartUpdate(itemId: string, quantity: number): Promise<{ item_id: string; quantity: number }> {
     await this.requireSession();
     const cap = await this.requireCapability('cart.update');
-    const res = await request(cap.endpoint, {
+    const res = await request<{ item_id: string; quantity: number }>(cap.endpoint, {
       method: 'PUT',
       body: { item_id: itemId, quantity },
       headers: this.authHeaders(),
@@ -152,7 +152,7 @@ export class AgentClient {
   async cartRemove(itemId: string): Promise<{ item_id: string; removed: boolean }> {
     await this.requireSession();
     const cap = await this.requireCapability('cart.remove');
-    const res = await request(cap.endpoint, {
+    const res = await request<{ item_id: string; removed: boolean }>(cap.endpoint, {
       method: 'DELETE',
       body: { item_id: itemId },
       headers: this.authHeaders(),

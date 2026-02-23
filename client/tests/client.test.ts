@@ -59,7 +59,7 @@ describe('AgentClient', () => {
       const client = new AgentClient(SITE_URL, { fetch: fetchImpl });
       const results = await client.search('mug');
       expect(results).toHaveLength(1);
-      expect(results[0].name).toBe('Mug');
+      expect((results[0] as { name: string }).name).toBe('Mug');
       expect(capturedUrl).toContain('q=mug');
     });
 
@@ -100,7 +100,7 @@ describe('AgentClient', () => {
       });
       const client = new AgentClient(SITE_URL, { fetch: fetchImpl });
       const item = await client.detail('42');
-      expect(item.id).toBe('42');
+      expect((item as { id: string }).id).toBe('42');
       expect(capturedUrl).toContain('/detail/42');
     });
   });
@@ -208,7 +208,7 @@ describe('AgentClient', () => {
       const client = new AgentClient(SITE_URL, { fetch: fetchImpl });
       await client.connect();
       const result = await client.getAuditArtifact();
-      expect(result.run_id).toBe('abc');
+      expect((result as { run_id: string }).run_id).toBe('abc');
     });
 
     it('throws when no session is active', async () => {
