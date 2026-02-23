@@ -22,6 +22,8 @@ export function browse({ handler }: BrowseOptions): CapabilityDefinition {
     handler: async (req) => {
       const page = req.query.page ? parseInt(req.query.page, 10) : undefined;
       const limit = req.query.limit ? parseInt(req.query.limit, 10) : undefined;
+      if (page !== undefined && isNaN(page)) throw new Error('page must be a number');
+      if (limit !== undefined && isNaN(limit)) throw new Error('limit must be a number');
       const category = req.query.category;
       const { page: _p, limit: _l, category: _c, ...filters } = req.query;
       return handler({ page, limit, category, filters });

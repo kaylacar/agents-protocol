@@ -24,7 +24,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-export async function request<T = any>(
+export async function request<T = unknown>(
   url: string,
   opts: RequestOptions = {},
 ): Promise<ApiResponse<T>> {

@@ -63,7 +63,7 @@ export interface AgentSession {
 
 // Generic API response wrapper
 
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   ok: boolean;
   data?: T;
   error?: string;

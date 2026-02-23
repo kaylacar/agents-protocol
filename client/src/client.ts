@@ -70,9 +70,9 @@ export class AgentClient {
   // --- Typed capability methods ---
 
   /** Search the site for items matching a query */
-  async search(query: string, options?: { limit?: number }): Promise<any[]> {
+  async search(query: string, options?: { limit?: number }): Promise<unknown[]> {
     const cap = await this.requireCapability('search');
-    const res = await request<any[]>(cap.endpoint, {
+    const res = await request<unknown[]>(cap.endpoint, {
       method: 'GET',
       query: { q: query, limit: options?.limit },
       headers: this.authHeaders(),
@@ -87,9 +87,9 @@ export class AgentClient {
     limit?: number;
     category?: string;
     filters?: Record<string, string>;
-  }): Promise<{ items: any[]; total: number }> {
+  }): Promise<{ items: unknown[]; total: number }> {
     const cap = await this.requireCapability('browse');
-    const res = await request<{ items: any[]; total: number }>(cap.endpoint, {
+    const res = await request<{ items: unknown[]; total: number }>(cap.endpoint, {
       method: 'GET',
       query: { page: options?.page, limit: options?.limit, category: options?.category, ...options?.filters },
       headers: this.authHeaders(),
@@ -99,10 +99,10 @@ export class AgentClient {
   }
 
   /** Get full details for a specific item by ID */
-  async detail(id: string): Promise<any> {
+  async detail(id: string): Promise<unknown> {
     const cap = await this.requireCapability('detail');
     const endpoint = cap.endpoint.replace(':id', encodeURIComponent(id));
-    const res = await request<any>(endpoint, {
+    const res = await request<unknown>(endpoint, {
       method: 'GET',
       headers: this.authHeaders(),
       fetchImpl: this.fetchImpl,
@@ -192,7 +192,7 @@ export class AgentClient {
    * Call any capability by name with raw params.
    * Use this for capabilities not covered by the typed methods.
    */
-  async call(capabilityName: string, params?: Record<string, unknown>): Promise<any> {
+  async call(capabilityName: string, params?: Record<string, unknown>): Promise<unknown> {
     const cap = await this.requireCapability(capabilityName);
     if (cap.requires_session && !this.session) {
       await this.connect();
@@ -219,7 +219,7 @@ export class AgentClient {
    *     process(items);
    *   }
    */
-  async *paginate<T = any>(
+  async *paginate<T = unknown>(
     capabilityName: string,
     params: Record<string, unknown> = {},
   ): AsyncGenerator<T[]> {
@@ -227,20 +227,21 @@ export class AgentClient {
     const limit = (params.limit as number) ?? this.pageSize;
 
     while (true) {
-      const result = await this.call(capabilityName, { ...params, page, limit });
+      const raw = await this.call(capabilityName, { ...params, page, limit });
+      const result = raw as { items?: T[]; total?: number } | null;
       const items: T[] = result?.items ?? [];
       if (items.length === 0) break;
 
       yield items;
 
       const fetched = page * limit;
-      if (fetched >= (result.total ?? fetched)) break;
+      if (fetched >= (result?.total ?? fetched)) break;
       page++;
     }
   }
 
   /** Retrieve the signed audit artifact for the current session */
-  async getAuditArtifact(): Promise<any> {
+  async getAuditArtifact(): Promise<unknown> {
     if (!this.session) {
       throw new AgentClientError('No active session — connect() first');
     }

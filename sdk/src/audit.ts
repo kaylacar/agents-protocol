@@ -145,10 +145,12 @@ export class AuditManager {
 
     // Queue the handler so the registered executor can pick it up.
     const key = `${sessionToken}:${capabilityName}`;
-    if (!this.pendingHandlers.has(key)) {
-      this.pendingHandlers.set(key, []);
+    let queue = this.pendingHandlers.get(key);
+    if (!queue) {
+      queue = [];
+      this.pendingHandlers.set(key, queue);
     }
-    this.pendingHandlers.get(key)!.push(handler);
+    queue.push(handler);
 
     try {
       const result = await entry.runtime.callTool({

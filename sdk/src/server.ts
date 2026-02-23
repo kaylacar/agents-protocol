@@ -21,8 +21,9 @@ interface RouteEntry {
 
 interface InternalResponse {
   status: number;
-  body: any;
+  body: unknown;
   contentType?: string;
+  headers?: Record<string, string>;
 }
 
 const AGENTS_REL = 'agents';
@@ -180,8 +181,13 @@ export class AgentDoor {
       }
 
       res.status(result.status);
+      if (result.headers) {
+        for (const [k, v] of Object.entries(result.headers)) {
+          res.setHeader(k, v);
+        }
+      }
       if (result.contentType) {
-        res.type(result.contentType).send(result.body);
+        res.type(result.contentType).send(result.body as string);
       } else {
         res.json(result.body);
       }
@@ -214,6 +220,7 @@ export class AgentDoor {
       const headers: Record<string, string> = {
         ...corsHeaders(agentsJsonPath),
         'Content-Type': result.contentType ?? 'application/json',
+        ...(result.headers ?? {}),
       };
 
       const body = result.contentType
@@ -259,7 +266,8 @@ export class AgentDoor {
       method: 'POST',
       pattern: `${apiBase}/session`,
       handler: async (req) => {
-        if (!this.checkRate(req)) return rateLimitResponse();
+        const rate = this.checkRate(req);
+        if (!rate.allowed) return rateLimitResponse(rate.resetAt);
         const result = this.sessionManager.createSession(this.config.site.url);
         if (this.auditManager) {
           this.auditManager.startSession(result.sessionToken, this.config.site.url, result.capabilities);
@@ -283,7 +291,8 @@ export class AgentDoor {
       method: 'DELETE',
       pattern: `${apiBase}/session`,
       handler: async (req) => {
-        if (!this.checkRate(req)) return rateLimitResponse();
+        const rate = this.checkRate(req);
+        if (!rate.allowed) return rateLimitResponse(rate.resetAt);
         const token = extractToken(req);
         if (!token) return { status: 401, body: { ok: false, error: 'Missing session token' } };
         if (this.auditManager) this.auditManager.endSession(token);
@@ -297,7 +306,8 @@ export class AgentDoor {
         method: 'GET',
         pattern: `${apiBase}/audit/:session_id`,
         handler: async (req) => {
-          if (!this.checkRate(req)) return rateLimitResponse();
+          const rate = this.checkRate(req);
+        if (!rate.allowed) return rateLimitResponse(rate.resetAt);
           const artifact = this.auditManager!.getArtifact(req.params.session_id);
           if (!artifact) return { status: 404, body: { ok: false, error: 'Audit artifact not found' } };
           return { status: 200, body: { ok: true, data: artifact } };
@@ -311,7 +321,8 @@ export class AgentDoor {
         method: cap.method,
         pattern,
         handler: async (req) => {
-          if (!this.checkRate(req)) return rateLimitResponse();
+          const rate = this.checkRate(req);
+        if (!rate.allowed) return rateLimitResponse(rate.resetAt);
 
           let session: SessionData | null = null;
           if (cap.requiresSession) {
@@ -355,17 +366,17 @@ export class AgentDoor {
     const linkTag = `<link rel="${AGENTS_REL}" href="${this.agentsJsonPath}">`;
     const originalSend = res.send.bind(res);
 
-    (res as any).send = (body?: any): Response => {
+    (res as unknown as { send: (body?: unknown) => Response }).send = (body?: unknown): Response => {
       const ct = res.getHeader('Content-Type') as string | undefined;
       if (typeof body === 'string' && ct?.includes('text/html')) {
         body = body.replace(/<\/head>/i, `  ${linkTag}\n</head>`);
       }
-      return originalSend(body);
+      return originalSend(body as Parameters<typeof originalSend>[0]);
     };
   }
 
-  private checkRate(req: AgentRequest): boolean {
-    return this.rateLimiter.checkRateLimit(req.ip ?? 'unknown', this.rateLimit).allowed;
+  private checkRate(req: AgentRequest): { allowed: boolean; remaining: number; resetAt: number } {
+    return this.rateLimiter.checkRateLimit(req.ip ?? 'unknown', this.rateLimit);
   }
 
   destroy(): void {
@@ -386,8 +397,17 @@ function corsHeaders(agentsJsonPath: string): Record<string, string> {
   };
 }
 
-function rateLimitResponse(): InternalResponse {
-  return { status: 429, body: { ok: false, error: 'Rate limit exceeded' } };
+function rateLimitResponse(resetAt: number): InternalResponse {
+  const retryAfter = String(Math.max(1, Math.ceil((resetAt - Date.now()) / 1000)));
+  return {
+    status: 429,
+    body: { ok: false, error: 'Rate limit exceeded' },
+    headers: {
+      'Retry-After': retryAfter,
+      'X-RateLimit-Remaining': '0',
+      'X-RateLimit-Reset': String(Math.ceil(resetAt / 1000)),
+    },
+  };
 }
 
 function expressToAgentRequest(req: Request): AgentRequest {
@@ -403,7 +423,7 @@ function expressToAgentRequest(req: Request): AgentRequest {
     method: req.method.toUpperCase(),
     path: req.path,
     query,
-    body: (req.body as Record<string, any>) ?? {},
+    body: (req.body as Record<string, unknown>) ?? {},
     params: (req.params as Record<string, string>) ?? {},
     headers,
     ip: req.ip ?? req.socket?.remoteAddress,
@@ -418,10 +438,10 @@ async function webRequestToAgentRequest(request: globalThis.Request): Promise<Ag
   const headers: Record<string, string> = {};
   request.headers.forEach((v, k) => { headers[k] = v; });
 
-  let body: Record<string, any> = {};
+  let body: Record<string, unknown> = {};
   const ct = request.headers.get('content-type') ?? '';
   if (ct.includes('application/json') && request.body) {
-    try { body = await request.json() as Record<string, any>; } catch { /* empty body */ }
+    try { body = await request.json() as Record<string, unknown>; } catch { /* empty body */ }
   } else if (ct.includes('application/x-www-form-urlencoded') && request.body) {
     try {
       const text = await request.text();
