@@ -105,14 +105,14 @@ describe('Input validation', () => {
       });
       await mw(addReq, mockRes(), jest.fn());
       // Then try to update with negative
-      const req = mockReq('PUT', '/.well-known/agents/api/cart/update', {
+      const req = mockReq('PATCH', '/.well-known/agents/api/cart/update', {
         body: { item_id: '1', quantity: -5 },
         headers: { 'x-agent-session': token },
       });
       const res = mockRes();
       await mw(req, res, jest.fn());
       expect(res._status).toBe(400);
-      expect(res._body.error).toContain('positive integer');
+      expect(res._body.error).toContain('non-negative integer');
     });
   });
 
@@ -192,7 +192,7 @@ describe('Input validation', () => {
       });
       const res = mockRes();
       await mw(req, res, jest.fn());
-      expect(res._status).toBe(200);
+      expect(res._status).toBe(201);
     });
   });
 

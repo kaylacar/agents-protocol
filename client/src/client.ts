@@ -146,7 +146,7 @@ export class AgentClient {
     await this.requireSession();
     const cap = await this.requireCapability('cart.update');
     const res = await request<{ item_id: string; quantity: number }>(cap.endpoint, {
-      method: 'PUT',
+      method: 'PATCH',
       body: { item_id: itemId, quantity },
       headers: this.authHeaders(),
       fetchImpl: this.fetchImpl,

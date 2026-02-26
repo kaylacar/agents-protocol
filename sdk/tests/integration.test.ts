@@ -52,8 +52,8 @@ describe('Integration: Fetch handler end-to-end', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('Content-Type')).toBe('text/plain');
     const text = await res.text();
-    expect(text).toContain('Site: Integration Test');
-    expect(text).toContain('Allow: search');
+    expect(text).toContain('Name: Integration Test');
+    expect(text).toContain('Capabilities: search,');
   });
 
   it('full shopping flow: session → search → detail → cart → checkout', async () => {

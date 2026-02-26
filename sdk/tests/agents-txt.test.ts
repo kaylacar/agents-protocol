@@ -15,7 +15,7 @@ function makeConfig(overrides?: Partial<AgentDoorConfig>): AgentDoorConfig {
 describe('generateAgentsTxt', () => {
   it('includes site name and URL', () => {
     const txt = generateAgentsTxt(makeConfig());
-    expect(txt).toContain('Site: Test Store');
+    expect(txt).toContain('Name: Test Store');
     expect(txt).toContain('URL: https://test.com');
   });
 
@@ -33,30 +33,31 @@ describe('generateAgentsTxt', () => {
     expect(txt).not.toContain('Contact:');
   });
 
-  it('lists all capabilities as Allow directives', () => {
+  it('lists capabilities as comma-separated Capabilities field', () => {
     const txt = generateAgentsTxt(makeConfig());
-    expect(txt).toContain('Allow: search');
-    expect(txt).toContain('Allow: browse');
+    expect(txt).toContain('Capabilities: search, browse');
   });
 
   it('includes rate limit when configured', () => {
     const txt = generateAgentsTxt(makeConfig({ rateLimit: 120 }));
-    expect(txt).toContain('Rate-Limit: 120/minute');
+    expect(txt).toContain('Rate-Limit: 120');
+    expect(txt).not.toContain('Rate-Limit: 120/');
   });
 
   it('includes session TTL when configured', () => {
     const txt = generateAgentsTxt(makeConfig({ sessionTtl: 900 }));
-    expect(txt).toContain('Session-TTL: 900s');
+    expect(txt).toContain('Session-TTL: 900');
+    expect(txt).not.toContain('Session-TTL: 900s');
   });
 
   it('links to agents.json with site URL and base path', () => {
     const txt = generateAgentsTxt(makeConfig());
-    expect(txt).toContain('Agents-JSON: https://test.com/.well-known/agents.json');
+    expect(txt).toContain('Capabilities-URL: https://test.com/.well-known/agents.json');
   });
 
   it('respects custom basePath', () => {
     const txt = generateAgentsTxt(makeConfig({ basePath: '/api' }));
-    expect(txt).toContain('Agents-JSON: https://test.com/api/agents.json');
+    expect(txt).toContain('Capabilities-URL: https://test.com/api/agents.json');
   });
 
   it('flattens nested capability arrays (from cart())', () => {
@@ -65,7 +66,6 @@ describe('generateAgentsTxt', () => {
       { name: 'cart.view', description: 'View', method: 'GET' as const, requiresSession: true, handler: async () => {} },
     ];
     const txt = generateAgentsTxt(makeConfig({ capabilities: [cartCaps] as any }));
-    expect(txt).toContain('Allow: cart.add');
-    expect(txt).toContain('Allow: cart.view');
+    expect(txt).toContain('Capabilities: cart.add, cart.view');
   });
 });

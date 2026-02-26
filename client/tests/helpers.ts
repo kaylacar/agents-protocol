@@ -13,7 +13,7 @@ export const MANIFEST: AgentsManifest = {
     { name: 'detail', description: 'Item detail', method: 'GET', endpoint: `${API}/detail/:id` },
     { name: 'cart.add', description: 'Add to cart', method: 'POST', endpoint: `${API}/cart/add`, requires_session: true },
     { name: 'cart.view', description: 'View cart', method: 'GET', endpoint: `${API}/cart/view`, requires_session: true },
-    { name: 'cart.update', description: 'Update cart', method: 'PUT', endpoint: `${API}/cart/update`, requires_session: true },
+    { name: 'cart.update', description: 'Update cart', method: 'PATCH', endpoint: `${API}/cart/update`, requires_session: true },
     { name: 'cart.remove', description: 'Remove from cart', method: 'DELETE', endpoint: `${API}/cart/remove`, requires_session: true },
     { name: 'checkout', description: 'Checkout', method: 'POST', endpoint: `${API}/checkout`, requires_session: true, human_handoff: true },
     { name: 'contact', description: 'Contact', method: 'POST', endpoint: `${API}/contact` },

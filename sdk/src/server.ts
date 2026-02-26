@@ -71,6 +71,10 @@ export class AgentDoor {
     this.basePath = config.basePath ?? '/.well-known';
     this.capabilities = config.capabilities.flat();
 
+    if (this.capabilities.length === 0) {
+      throw new Error('At least one capability is required');
+    }
+
     // Validate capability names against the schema pattern
     const NAME_PATTERN = /^[a-z][a-z0-9_.]*$/;
     for (const cap of this.capabilities) {
@@ -81,10 +85,15 @@ export class AgentDoor {
       }
     }
 
+    const sessionTtl = config.sessionTtl ?? 3600;
+    if (sessionTtl < 60) {
+      throw new Error('sessionTtl must be at least 60 seconds');
+    }
+
     this.rateLimit = config.rateLimit ?? 60;
     this.corsOrigin = config.corsOrigin ?? '*';
     this.trustProxy = config.trustProxy ?? false;
-    this.sessionManager = new SessionManager(config.sessionTtl ?? 3600, this.capabilities);
+    this.sessionManager = new SessionManager(sessionTtl, this.capabilities);
     this.rateLimiter = new RateLimiter();
     if (config.audit && AuditManagerClass) {
       this.auditManager = new AuditManagerClass(config.sessionTtl ?? 3600);
@@ -326,7 +335,7 @@ export class AgentDoor {
           this.auditManager.startSession(result.sessionToken, this.config.site.url, result.capabilities);
         }
         return {
-          status: 200,
+          status: 201,
           body: {
             ok: true,
             data: {
@@ -350,7 +359,14 @@ export class AgentDoor {
         if (!token) return { status: 401, body: { ok: false, error: 'Missing session token' } };
         if (this.auditManager) this.auditManager.endSession(token);
         this.sessionManager.endSession(token);
-        return { status: 200, body: { ok: true, data: { ended: true } } };
+        const deleteData: Record<string, unknown> = {
+          session_token: token,
+          ended_at: new Date().toISOString(),
+        };
+        if (this.auditManager) {
+          deleteData.audit_artifact_url = `${apiBase}/audit/${token}`;
+        }
+        return { status: 200, body: { ok: true, data: deleteData } };
       },
     });
 
@@ -405,7 +421,8 @@ export class AgentDoor {
             } else {
               data = await cap.handler(req, session);
             }
-            return { status: 200, body: { ok: true, data } };
+            const successStatus = cap.method === 'POST' ? 201 : 200;
+            return { status: successStatus, body: { ok: true, data } };
           } catch (err: unknown) {
             const message = err instanceof Error ? err.message : 'Unknown error';
             const status = err instanceof PolicyDeniedError ? 403 : 400;
