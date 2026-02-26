@@ -23,6 +23,15 @@ export function contact({ handler }: ContactOptions): CapabilityDefinition {
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         throw new Error('Invalid email address format');
       }
+      if (name.length > 200) {
+        throw new Error('name must be 200 characters or fewer');
+      }
+      if (email.length > 320) {
+        throw new Error('email must be 320 characters or fewer');
+      }
+      if (message.length > 5000) {
+        throw new Error('message must be 5,000 characters or fewer');
+      }
       await handler({ name, email, message });
       return { sent: true };
     },

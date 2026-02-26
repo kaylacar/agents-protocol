@@ -157,13 +157,14 @@ describe('AgentClient', () => {
   describe('checkout', () => {
     it('returns checkout URL for human handoff', async () => {
       const fetchImpl = manifestFetch({
-        '/checkout': () => ({ ok: true, data: { checkout_url: 'https://test.com/pay/xyz', human_handoff: true } }),
+        '/checkout': () => ({ ok: true, data: { handoff_url: 'https://test.com/pay/xyz', expires_at: '2026-02-19T13:30:00Z', message: 'Complete your purchase' } }),
       });
       const client = new AgentClient(SITE_URL, { fetch: fetchImpl });
       await client.connect();
       const result = await client.checkout();
-      expect(result.checkout_url).toContain('https://test.com/pay');
-      expect(result.human_handoff).toBe(true);
+      expect(result.handoff_url).toContain('https://test.com/pay');
+      expect(result.expires_at).toBeDefined();
+      expect(result.message).toBeDefined();
     });
 
     it('throws when called without a session', async () => {

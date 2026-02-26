@@ -70,6 +70,17 @@ export class AgentDoor {
     this.config = config;
     this.basePath = config.basePath ?? '/.well-known';
     this.capabilities = config.capabilities.flat();
+
+    // Validate capability names against the schema pattern
+    const NAME_PATTERN = /^[a-z][a-z0-9_.]*$/;
+    for (const cap of this.capabilities) {
+      if (!NAME_PATTERN.test(cap.name)) {
+        throw new Error(
+          `Invalid capability name "${cap.name}": must match pattern ^[a-z][a-z0-9_.]*$`,
+        );
+      }
+    }
+
     this.rateLimit = config.rateLimit ?? 60;
     this.corsOrigin = config.corsOrigin ?? '*';
     this.trustProxy = config.trustProxy ?? false;
@@ -111,8 +122,15 @@ export class AgentDoor {
         const method = methodMap[httpMethod.toLowerCase()];
         if (!method) continue;
 
-        const name = operation.operationId
+        const rawName = operation.operationId
           ?? `${httpMethod}_${path.replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '')}`;
+        // Normalize to snake_case so names satisfy ^[a-z][a-z0-9_.]*$
+        const name = rawName
+          .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+          .replace(/[^a-z0-9_.]/gi, '_')
+          .toLowerCase()
+          .replace(/_+/g, '_')
+          .replace(/^_|_$/g, '');
 
         const params: NonNullable<CapabilityDefinition['params']> = {};
 

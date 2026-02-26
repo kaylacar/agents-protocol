@@ -1,7 +1,7 @@
 import { CapabilityDefinition, CartItem } from '../types';
 
 interface CheckoutOptions {
-  onCheckout: (cart: CartItem[]) => Promise<{ checkout_url: string }>;
+  onCheckout: (cart: CartItem[]) => Promise<{ checkout_url: string; expires_at?: string; message?: string }>;
 }
 
 export function checkout({ onCheckout }: CheckoutOptions): CapabilityDefinition {
@@ -16,7 +16,11 @@ export function checkout({ onCheckout }: CheckoutOptions): CapabilityDefinition 
       const items = session.cartItems;
       if (items.length === 0) throw new Error('Cart is empty');
       const result = await onCheckout(items);
-      return { checkout_url: result.checkout_url, human_handoff: true };
+      return {
+        handoff_url: result.checkout_url,
+        expires_at: result.expires_at ?? new Date(Date.now() + 30 * 60_000).toISOString(),
+        message: result.message ?? 'Please complete your purchase at the link above.',
+      };
     },
   };
 }

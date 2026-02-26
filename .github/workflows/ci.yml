@@ -19,4 +19,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build --workspaces --if-present
+      - name: Type check
+        run: npm run typecheck --workspace=sdk --workspace=client
       - run: npm test --workspaces
+      - name: Security audit
+        run: npm audit --omit=dev || true

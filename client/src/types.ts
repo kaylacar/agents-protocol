@@ -87,8 +87,9 @@ export interface CartView {
 // Checkout
 
 export interface CheckoutResult {
-  checkout_url: string;
-  human_handoff: true;
+  handoff_url: string;
+  expires_at: string;
+  message: string;
 }
 
 // Client config

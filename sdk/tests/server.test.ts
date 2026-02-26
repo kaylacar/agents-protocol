@@ -189,8 +189,9 @@ describe('AgentDoor', () => {
     const checkoutRes = mockRes();
     await mw(checkoutReq, checkoutRes, jest.fn());
     expect(checkoutRes._body.ok).toBe(true);
-    expect(checkoutRes._body.data.checkout_url).toContain('https://test.com/pay');
-    expect(checkoutRes._body.data.human_handoff).toBe(true);
+    expect(checkoutRes._body.data.handoff_url).toContain('https://test.com/pay');
+    expect(checkoutRes._body.data.expires_at).toBeDefined();
+    expect(checkoutRes._body.data.message).toBeDefined();
   });
 
   it('handles detail with route params', async () => {
@@ -266,12 +267,12 @@ describe('AgentDoor.fromOpenAPI', () => {
     expect(agentsJson.site.name).toBe('Pet Store');
     expect(agentsJson.capabilities).toHaveLength(3);
 
-    const listPets = agentsJson.capabilities.find((c: any) => c.name === 'listPets');
+    const listPets = agentsJson.capabilities.find((c: any) => c.name === 'list_pets');
     expect(listPets).toBeDefined();
     expect(listPets.method).toBe('GET');
     expect(listPets.params?.limit).toBeDefined();
 
-    const createPet = agentsJson.capabilities.find((c: any) => c.name === 'createPet');
+    const createPet = agentsJson.capabilities.find((c: any) => c.name === 'create_pet');
     expect(createPet).toBeDefined();
     expect(createPet.method).toBe('POST');
     expect(createPet.params?.name.required).toBe(true);

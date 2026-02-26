@@ -18,8 +18,8 @@ export function cart(): CapabilityDefinition[] {
       if (typeof item_id !== 'string' || typeof quantity !== 'number') {
         throw new Error('Missing required parameters: item_id, quantity');
       }
-      if (!Number.isInteger(quantity) || quantity < 1) {
-        throw new Error('quantity must be a positive integer');
+      if (!Number.isInteger(quantity) || quantity < 1 || quantity > 10_000) {
+        throw new Error('quantity must be a positive integer (max 10,000)');
       }
 
       const existing = session.cartItems.find(i => i.itemId === item_id);
@@ -67,8 +67,8 @@ export function cart(): CapabilityDefinition[] {
       if (typeof item_id !== 'string' || typeof quantity !== 'number') {
         throw new Error('Missing required parameters: item_id, quantity');
       }
-      if (!Number.isInteger(quantity) || quantity < 1) {
-        throw new Error('quantity must be a positive integer');
+      if (!Number.isInteger(quantity) || quantity < 1 || quantity > 10_000) {
+        throw new Error('quantity must be a positive integer (max 10,000)');
       }
 
       const item = session.cartItems.find(i => i.itemId === item_id);

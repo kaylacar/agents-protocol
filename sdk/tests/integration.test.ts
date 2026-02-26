@@ -116,8 +116,9 @@ describe('Integration: Fetch handler end-to-end', () => {
     ));
     const checkoutData = await json(checkoutRes);
     expect(checkoutData.ok).toBe(true);
-    expect(checkoutData.data.checkout_url).toContain('pay/123');
-    expect(checkoutData.data.human_handoff).toBe(true);
+    expect(checkoutData.data.handoff_url).toContain('pay/123');
+    expect(checkoutData.data.expires_at).toBeDefined();
+    expect(checkoutData.data.message).toBeDefined();
 
     // Delete session
     const deleteRes = await handler(new Request(
