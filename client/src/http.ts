@@ -8,6 +8,8 @@ export interface RequestOptions {
   fetchImpl?: typeof fetch;
   maxRetries?: number;
   retryDelay?: number;
+  /** Request timeout in milliseconds. Default: 30000 (30s). 0 = no timeout. */
+  timeout?: number;
 }
 
 function buildUrl(base: string, query?: Record<string, string | number | undefined>): string {
@@ -36,6 +38,7 @@ export async function request<T = unknown>(
     fetchImpl = fetch,
     maxRetries = 3,
     retryDelay = 1000,
+    timeout = 30_000,
   } = opts;
 
   const fullUrl = buildUrl(url, query);
@@ -53,24 +56,47 @@ export async function request<T = unknown>(
     init.body = JSON.stringify(body);
   }
 
+  // Attach AbortSignal for timeout if supported and timeout > 0
+  if (timeout > 0 && typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal) {
+    init.signal = AbortSignal.timeout(timeout);
+  }
+
   let lastError: Error | null = null;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     if (attempt > 0) {
       await sleep(retryDelay * Math.pow(2, attempt - 1));
     }
 
-    const res = await fetchImpl(fullUrl, init);
+    let res: Response;
+    try {
+      res = await fetchImpl(fullUrl, init);
+    } catch (err) {
+      if (err instanceof Error && err.name === 'TimeoutError') {
+        throw new AgentClientError(`Request timed out after ${timeout}ms: ${fullUrl}`, 0);
+      }
+      throw err;
+    }
 
     if (res.status === 429) {
       lastError = new AgentClientError('Rate limit exceeded — retrying', 429);
       continue;
     }
 
-    if (!res.ok && res.status !== 400 && res.status !== 401 && res.status !== 404) {
-      throw new AgentClientError(`HTTP ${res.status} from ${fullUrl}`, res.status);
+    // Parse JSON for all responses so error messages from the server are preserved
+    const json = (await res.json()) as ApiResponse<T>;
+
+    if (!res.ok) {
+      if (res.status === 400 || res.status === 401 || res.status === 404) {
+        // Return the server's error envelope — caller (unwrap) will handle it
+        return json;
+      }
+      throw new AgentClientError(
+        json.error ?? `HTTP ${res.status} from ${fullUrl}`,
+        res.status,
+        json.error,
+      );
     }
 
-    const json = (await res.json()) as ApiResponse<T>;
     return json;
   }
 

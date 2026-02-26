@@ -12,6 +12,7 @@ export class AgentClient {
   private maxRetries: number;
   private retryDelay: number;
   private pageSize: number;
+  private timeout: number;
 
   constructor(siteUrl: string, config: AgentClientConfig = {}) {
     this.siteUrl = siteUrl.replace(/\/$/, '');
@@ -20,6 +21,7 @@ export class AgentClient {
     this.maxRetries = config.maxRetries ?? 3;
     this.retryDelay = config.retryDelay ?? 1000;
     this.pageSize = config.pageSize ?? 20;
+    this.timeout = config.timeout ?? 30_000;
   }
 
   /** Fetch agents.json and learn what this site supports (cached after first call) */
@@ -75,8 +77,7 @@ export class AgentClient {
     const res = await request<unknown[]>(cap.endpoint, {
       method: 'GET',
       query: { q: query, limit: options?.limit },
-      headers: this.authHeaders(),
-      fetchImpl: this.fetchImpl,
+      ...this.baseOpts(),
     });
     return this.unwrap(res, 'search');
   }
@@ -92,8 +93,7 @@ export class AgentClient {
     const res = await request<{ items: unknown[]; total: number }>(cap.endpoint, {
       method: 'GET',
       query: { page: options?.page, limit: options?.limit, category: options?.category, ...options?.filters },
-      headers: this.authHeaders(),
-      fetchImpl: this.fetchImpl,
+      ...this.baseOpts(),
     });
     return this.unwrap(res, 'browse');
   }
@@ -104,8 +104,7 @@ export class AgentClient {
     const endpoint = cap.endpoint.replace(':id', encodeURIComponent(id));
     const res = await request<unknown>(endpoint, {
       method: 'GET',
-      headers: this.authHeaders(),
-      fetchImpl: this.fetchImpl,
+      ...this.baseOpts(),
     });
     return this.unwrap(res, 'detail');
   }
@@ -117,8 +116,7 @@ export class AgentClient {
     const res = await request<{ item_id: string; quantity: number; cart_size: number }>(cap.endpoint, {
       method: 'POST',
       body: { item_id: itemId, quantity, ...meta },
-      headers: this.authHeaders(),
-      fetchImpl: this.fetchImpl,
+      ...this.baseOpts(),
     });
     return this.unwrap(res, 'cart.add');
   }
@@ -129,8 +127,7 @@ export class AgentClient {
     const cap = await this.requireCapability('cart.view');
     const res = await request<CartView>(cap.endpoint, {
       method: 'GET',
-      headers: this.authHeaders(),
-      fetchImpl: this.fetchImpl,
+      ...this.baseOpts(),
     });
     return this.unwrap(res, 'cart.view');
   }
@@ -142,8 +139,7 @@ export class AgentClient {
     const res = await request<{ item_id: string; quantity: number }>(cap.endpoint, {
       method: 'PUT',
       body: { item_id: itemId, quantity },
-      headers: this.authHeaders(),
-      fetchImpl: this.fetchImpl,
+      ...this.baseOpts(),
     });
     return this.unwrap(res, 'cart.update');
   }
@@ -155,8 +151,7 @@ export class AgentClient {
     const res = await request<{ item_id: string; removed: boolean }>(cap.endpoint, {
       method: 'DELETE',
       body: { item_id: itemId },
-      headers: this.authHeaders(),
-      fetchImpl: this.fetchImpl,
+      ...this.baseOpts(),
     });
     return this.unwrap(res, 'cart.remove');
   }
@@ -170,8 +165,7 @@ export class AgentClient {
     const cap = await this.requireCapability('checkout');
     const res = await request<CheckoutResult>(cap.endpoint, {
       method: 'POST',
-      headers: this.authHeaders(),
-      fetchImpl: this.fetchImpl,
+      ...this.baseOpts(),
     });
     return this.unwrap(res, 'checkout');
   }
@@ -182,8 +176,7 @@ export class AgentClient {
     const res = await request<{ sent: boolean }>(cap.endpoint, {
       method: 'POST',
       body: { name, email, message },
-      headers: this.authHeaders(),
-      fetchImpl: this.fetchImpl,
+      ...this.baseOpts(),
     });
     return this.unwrap(res, 'contact');
   }
@@ -194,18 +187,15 @@ export class AgentClient {
    */
   async call(capabilityName: string, params?: Record<string, unknown>): Promise<unknown> {
     const cap = await this.requireCapability(capabilityName);
-    if (cap.requires_session && !this.session) {
-      await this.connect();
+    if (cap.requires_session) {
+      await this.requireSession();
     }
     const isGet = cap.method === 'GET' || cap.method === 'DELETE';
     const res = await request(cap.endpoint, {
       method: cap.method,
       query: isGet ? (params as Record<string, string | number | undefined>) : undefined,
       body: !isGet ? params : undefined,
-      headers: this.authHeaders(),
-      fetchImpl: this.fetchImpl,
-      maxRetries: this.maxRetries,
-      retryDelay: this.retryDelay,
+      ...this.baseOpts(),
     });
     return this.unwrap(res, capabilityName);
   }
@@ -250,7 +240,7 @@ export class AgentClient {
       throw new AgentClientError('This site does not have audit enabled');
     }
     const endpoint = manifest.audit.endpoint.replace(':session_id', this.session.session_token);
-    const res = await request(endpoint, { fetchImpl: this.fetchImpl });
+    const res = await request(endpoint, { ...this.baseOpts() });
     return this.unwrap(res, 'audit');
   }
 
@@ -285,6 +275,17 @@ export class AgentClient {
       headers['Authorization'] = `Bearer ${this.session.session_token}`;
     }
     return headers;
+  }
+
+  /** Common request options shared by all capability calls */
+  private baseOpts(): { headers: Record<string, string>; fetchImpl: typeof fetch; timeout: number; maxRetries: number; retryDelay: number } {
+    return {
+      headers: this.authHeaders(),
+      fetchImpl: this.fetchImpl,
+      timeout: this.timeout,
+      maxRetries: this.maxRetries,
+      retryDelay: this.retryDelay,
+    };
   }
 
   private unwrap<T>(res: { ok: boolean; data?: T; error?: string }, capability: string): T {

@@ -284,19 +284,15 @@ describe('AgentClient', () => {
       expect(pages).toHaveLength(0);
     });
 
-    it('auto-creates session for session-required capabilities', async () => {
-      let sessionCreated = false;
+    it('throws for session-required capabilities without connect()', async () => {
       const fetchImpl = manifestFetch({
-        '/session': (_url, init) => {
-          if ((init?.method ?? 'GET') === 'POST') sessionCreated = true;
-          return { ok: true, data: SESSION };
-        },
         '/cart/view': () => ({ ok: true, data: { items: [{ id: '1', quantity: 1 }], total: 1 } }),
       });
       const client = new AgentClient(SITE_URL, { fetch: fetchImpl });
-      // cart.view requires session — paginate should auto-connect
-      for await (const _items of client.paginate('cart.view')) { break; }
-      expect(sessionCreated).toBe(true);
+      // cart.view requires session — should throw, not auto-connect
+      await expect(async () => {
+        for await (const _items of client.paginate('cart.view')) { break; }
+      }).rejects.toThrow('requires a session');
     });
   });
 

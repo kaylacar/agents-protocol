@@ -1,7 +1,22 @@
-import { AuditManager } from '../src/audit';
+/**
+ * AuditManager tests — only run when @rer/core and @rer/runtime are installed.
+ * Skipped entirely when the RER packages are absent.
+ */
 
-describe('AuditManager', () => {
-  let audit: AuditManager;
+let AuditManager: any;
+let rerAvailable = false;
+
+try {
+  AuditManager = require('../src/audit').AuditManager;
+  rerAvailable = true;
+} catch {
+  // @rer/* not installed — skip suite
+}
+
+const describeIfRer = rerAvailable ? describe : describe.skip;
+
+describeIfRer('AuditManager', () => {
+  let audit: InstanceType<typeof AuditManager>;
 
   afterEach(() => {
     audit?.destroy();

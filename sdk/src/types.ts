@@ -66,6 +66,24 @@ export interface CartItem {
   metadata?: Record<string, unknown>;
 }
 
+/**
+ * AuditProvider interface — decouples the SDK from @rer/*.
+ * AuditManager implements this when RER is installed; otherwise a no-op
+ * fallback is used so the SDK compiles and runs without RER.
+ */
+export interface AuditProvider {
+  startSession(sessionToken: string, siteUrl: string, capabilityNames: string[]): void;
+  callCapability(
+    sessionToken: string,
+    capabilityName: string,
+    requestData: Record<string, unknown>,
+    handler: () => Promise<unknown>,
+  ): Promise<unknown>;
+  endSession(sessionToken: string): unknown;
+  getArtifact(sessionToken: string): unknown;
+  destroy(): void;
+}
+
 /** OpenAPI 3.x subset used by AgentDoor.fromOpenAPI() */
 export interface OpenAPISpec {
   info?: { title?: string; description?: string };

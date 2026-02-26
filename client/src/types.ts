@@ -103,4 +103,6 @@ export interface AgentClientConfig {
   retryDelay?: number;
   /** Default page size for paginate(). Default: 20 */
   pageSize?: number;
+  /** Request timeout in milliseconds. Default: 30000 (30s). 0 = no timeout. */
+  timeout?: number;
 }

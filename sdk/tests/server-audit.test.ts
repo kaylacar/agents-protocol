@@ -1,6 +1,14 @@
 import { AgentDoor } from '../src/server';
 import { search, cart, checkout } from '../src/capabilities';
 
+let rerAvailable = false;
+try {
+  require('../src/audit');
+  rerAvailable = true;
+} catch {
+  // @rer/* not installed
+}
+
 function mockReq(method: string, path: string, opts?: { body?: any; query?: Record<string, string>; headers?: Record<string, string>; ip?: string }): any {
   return {
     method,
@@ -31,30 +39,128 @@ function mockRes(): any {
   return res;
 }
 
-describe('AgentDoor with audit: true', () => {
+function createDoor() {
+  return new AgentDoor({
+    site: { name: 'Test', url: 'https://test.com' },
+    capabilities: [
+      search({ handler: async (q) => [{ id: '1', name: `Result for ${q}` }] }),
+      cart(),
+      checkout({ onCheckout: async () => ({ checkout_url: 'https://test.com/pay' }) }),
+    ],
+    rateLimit: 100,
+    sessionTtl: 3600,
+    audit: true,
+  });
+}
+
+describe('AgentDoor with audit: true (graceful degradation)', () => {
   let door: AgentDoor;
 
   afterEach(() => {
     door?.destroy();
   });
 
-  function createDoor() {
-    door = new AgentDoor({
-      site: { name: 'Test', url: 'https://test.com' },
-      capabilities: [
-        search({ handler: async (q) => [{ id: '1', name: `Result for ${q}` }] }),
-        cart(),
-        checkout({ onCheckout: async () => ({ checkout_url: 'https://test.com/pay' }) }),
-      ],
-      rateLimit: 100,
-      sessionTtl: 3600,
-      audit: true,
-    });
-    return door.middleware();
-  }
+  it('constructs without error even when @rer/* is missing', () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    door = createDoor();
+    if (!rerAvailable) {
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('not installed'),
+      );
+    }
+    warnSpy.mockRestore();
+  });
+
+  it('session creation works (audit field depends on RER availability)', async () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    door = createDoor();
+    warnSpy.mockRestore();
+    const mw = door.middleware();
+
+    const req = mockReq('POST', '/.well-known/agents/api/session');
+    const res = mockRes();
+    await mw(req, res, jest.fn());
+
+    expect(res._body.ok).toBe(true);
+    expect(res._body.data.session_token).toBeDefined();
+    if (rerAvailable) {
+      expect(res._body.data.audit).toBe(true);
+    } else {
+      expect(res._body.data.audit).toBeUndefined();
+    }
+  });
+
+  it('capabilities work without audit trail when @rer/* is missing', async () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    door = createDoor();
+    warnSpy.mockRestore();
+    const mw = door.middleware();
+
+    // Search works without session
+    const searchReq = mockReq('GET', '/.well-known/agents/api/search', { query: { q: 'mugs' } });
+    const searchRes = mockRes();
+    await mw(searchReq, searchRes, jest.fn());
+    expect(searchRes._body.ok).toBe(true);
+    expect(searchRes._body.data).toHaveLength(1);
+  });
+
+  it('audit endpoint returns 404 when RER is not available', async () => {
+    if (rerAvailable) return; // only relevant when RER is missing
+
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    door = createDoor();
+    warnSpy.mockRestore();
+    const mw = door.middleware();
+
+    const req = mockReq('GET', '/.well-known/agents/api/audit/some-token');
+    const res = mockRes();
+    await mw(req, res, jest.fn());
+
+    expect(res._status).toBe(404);
+  });
+
+  it('CORS headers are set on responses', async () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    door = createDoor();
+    warnSpy.mockRestore();
+    const mw = door.middleware();
+
+    const req = mockReq('GET', '/.well-known/agents.txt');
+    const res = mockRes();
+    await mw(req, res, jest.fn());
+
+    expect(res._headers['access-control-allow-origin']).toBe('*');
+    expect(res._headers['access-control-allow-methods']).toContain('GET');
+    expect(res._headers['access-control-allow-headers']).toContain('Authorization');
+  });
+
+  it('OPTIONS requests get 204 (CORS preflight)', async () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    door = createDoor();
+    warnSpy.mockRestore();
+    const mw = door.middleware();
+
+    const req = mockReq('OPTIONS', '/.well-known/agents/api/search');
+    const res = mockRes();
+    await mw(req, res, jest.fn());
+
+    expect(res._status).toBe(204);
+  });
+});
+
+// Full audit flow tests — only run when @rer/* is available
+const describeIfRer = rerAvailable ? describe : describe.skip;
+
+describeIfRer('AgentDoor with audit: true (full RER integration)', () => {
+  let door: AgentDoor;
+
+  afterEach(() => {
+    door?.destroy();
+  });
 
   it('session creation response includes audit: true', async () => {
-    const mw = createDoor();
+    door = createDoor();
+    const mw = door.middleware();
     const req = mockReq('POST', '/.well-known/agents/api/session');
     const res = mockRes();
     await mw(req, res, jest.fn());
@@ -64,7 +170,8 @@ describe('AgentDoor with audit: true', () => {
   });
 
   it('full audit flow: session → search → end → retrieve artifact', async () => {
-    const mw = createDoor();
+    door = createDoor();
+    const mw = door.middleware();
 
     // Create session
     const sessionReq = mockReq('POST', '/.well-known/agents/api/session');
@@ -101,38 +208,9 @@ describe('AgentDoor with audit: true', () => {
     expect(auditRes._body.data.envelope).toBeDefined();
   });
 
-  it('audit endpoint returns 404 for unknown session', async () => {
-    const mw = createDoor();
-    const req = mockReq('GET', '/.well-known/agents/api/audit/nonexistent');
-    const res = mockRes();
-    await mw(req, res, jest.fn());
-
-    expect(res._status).toBe(404);
-    expect(res._body.ok).toBe(false);
-  });
-
-  it('CORS headers are set on responses', async () => {
-    const mw = createDoor();
-    const req = mockReq('GET', '/.well-known/agents.txt');
-    const res = mockRes();
-    await mw(req, res, jest.fn());
-
-    expect(res._headers['access-control-allow-origin']).toBe('*');
-    expect(res._headers['access-control-allow-methods']).toContain('GET');
-    expect(res._headers['access-control-allow-headers']).toContain('Authorization');
-  });
-
-  it('OPTIONS requests get 204 (CORS preflight)', async () => {
-    const mw = createDoor();
-    const req = mockReq('OPTIONS', '/.well-known/agents/api/search');
-    const res = mockRes();
-    await mw(req, res, jest.fn());
-
-    expect(res._status).toBe(204);
-  });
-
   it('cart operations are logged in the audit trail', async () => {
-    const mw = createDoor();
+    door = createDoor();
+    const mw = door.middleware();
 
     // Create session
     const sessionReq = mockReq('POST', '/.well-known/agents/api/session');

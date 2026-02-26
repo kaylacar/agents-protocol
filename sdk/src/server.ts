@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import {
   AgentDoorConfig,
   AgentRequest,
+  AuditProvider,
   CapabilityDefinition,
   OpenAPISpec,
   SessionData,
@@ -10,8 +11,31 @@ import { generateAgentsTxt } from './agents-txt';
 import { generateAgentsJson } from './agents-json';
 import { SessionManager } from './session';
 import { RateLimiter } from './rate-limiter';
-import { AuditManager } from './audit';
-import { PolicyDeniedError } from '@rer/core';
+
+/**
+ * Try to load AuditManager. Returns null if @rer/* packages are not installed.
+ * This allows the SDK to compile and run without RER — audit is opt-in.
+ *
+ * Uses require() to avoid TypeScript statically resolving the import
+ * (which would fail at compile time when @rer/* is absent).
+ */
+function tryLoadAuditManager(ttl: number): AuditProvider | null {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { AuditManager } = require('./audit') as { AuditManager: new (ttl: number) => AuditProvider };
+    return new AuditManager(ttl);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Check if an error is a PolicyDeniedError from @rer/core.
+ * Avoids a hard import — uses duck-typing on the error name.
+ */
+function isPolicyDenied(err: unknown): boolean {
+  return err instanceof Error && err.name === 'PolicyDeniedError';
+}
 
 interface RouteEntry {
   method: string;
@@ -34,7 +58,7 @@ export class AgentDoor {
   private capabilities: CapabilityDefinition[];
   private sessionManager: SessionManager;
   private rateLimiter: RateLimiter;
-  private auditManager: AuditManager | null;
+  private auditManager: AuditProvider | null;
   private rateLimit: number;
   private agentsTxt: string;
   private agentsJson: object;
@@ -48,7 +72,13 @@ export class AgentDoor {
     this.rateLimit = config.rateLimit ?? 60;
     this.sessionManager = new SessionManager(config.sessionTtl ?? 3600, this.capabilities);
     this.rateLimiter = new RateLimiter();
-    this.auditManager = config.audit ? new AuditManager(config.sessionTtl ?? 3600) : null;
+    this.auditManager = null;
+    if (config.audit) {
+      this.auditManager = tryLoadAuditManager(config.sessionTtl ?? 3600);
+      if (!this.auditManager) {
+        console.warn('[AgentDoor] audit: true but @rer/core and @rer/runtime are not installed. Audit disabled.');
+      }
+    }
     this.agentsTxt = generateAgentsTxt(config);
     this.agentsJson = generateAgentsJson(config);
     this.agentsJsonPath = `${this.basePath}/agents.json`;
@@ -268,6 +298,7 @@ export class AgentDoor {
       handler: async (req) => {
         const rate = this.checkRate(req);
         if (!rate.allowed) return rateLimitResponse(rate.resetAt);
+
         const result = this.sessionManager.createSession(this.config.site.url);
         if (this.auditManager) {
           this.auditManager.startSession(result.sessionToken, this.config.site.url, result.capabilities);
@@ -293,6 +324,7 @@ export class AgentDoor {
       handler: async (req) => {
         const rate = this.checkRate(req);
         if (!rate.allowed) return rateLimitResponse(rate.resetAt);
+
         const token = extractToken(req);
         if (!token) return { status: 401, body: { ok: false, error: 'Missing session token' } };
         if (this.auditManager) this.auditManager.endSession(token);
@@ -301,14 +333,16 @@ export class AgentDoor {
       },
     });
 
-    if (this.auditManager) {
+    if (this.config.audit) {
       routes.push({
         method: 'GET',
         pattern: `${apiBase}/audit/:session_id`,
         handler: async (req) => {
           const rate = this.checkRate(req);
-        if (!rate.allowed) return rateLimitResponse(rate.resetAt);
-          const artifact = this.auditManager!.getArtifact(req.params.session_id);
+          if (!rate.allowed) return rateLimitResponse(rate.resetAt);
+  
+          if (!this.auditManager) return { status: 404, body: { ok: false, error: 'Audit not available' } };
+          const artifact = this.auditManager.getArtifact(req.params.session_id);
           if (!artifact) return { status: 404, body: { ok: false, error: 'Audit artifact not found' } };
           return { status: 200, body: { ok: true, data: artifact } };
         },
@@ -333,6 +367,7 @@ export class AgentDoor {
           }
 
           try {
+    
             let data: unknown;
             if (this.auditManager && session) {
               const requestData = cap.method === 'GET'
@@ -350,7 +385,7 @@ export class AgentDoor {
             return { status: 200, body: { ok: true, data } };
           } catch (err: unknown) {
             const message = err instanceof Error ? err.message : 'Unknown error';
-            const status = err instanceof PolicyDeniedError ? 403 : 400;
+            const status = isPolicyDenied(err) ? 403 : 400;
             return { status, body: { ok: false, error: message } };
           }
         },
