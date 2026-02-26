@@ -15,6 +15,12 @@ export class AgentClient {
 
   constructor(siteUrl: string, config: AgentClientConfig = {}) {
     this.siteUrl = siteUrl.replace(/\/$/, '');
+    if (this.siteUrl.startsWith('http://') && !config.allowInsecure) {
+      console.warn(
+        `[AgentClient] Connecting over insecure HTTP to ${this.siteUrl}. ` +
+        'Set { allowInsecure: true } to suppress this warning.',
+      );
+    }
     this.fetchImpl = config.fetch ?? fetch;
     this.userAgent = config.userAgent ?? '@agents-protocol/client/0.1.0';
     this.maxRetries = config.maxRetries ?? 3;

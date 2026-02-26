@@ -124,12 +124,12 @@ describe('AgentClient', () => {
 
     it('views cart', async () => {
       const fetchImpl = manifestFetch({
-        '/cart/view': () => ({ ok: true, data: { items: [{ itemId: '1', quantity: 2 }], subtotal: 56 } }),
+        '/cart/view': () => ({ ok: true, data: { items: [{ itemId: '1', quantity: 2 }], subtotal_cents: 5600 } }),
       });
       const client = new AgentClient(SITE_URL, { fetch: fetchImpl });
       await client.connect();
       const cart = await client.cartView();
-      expect(cart.subtotal).toBe(56);
+      expect(cart.subtotal_cents).toBe(5600);
       expect(cart.items).toHaveLength(1);
     });
 

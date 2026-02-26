@@ -16,7 +16,9 @@ export function search({ handler }: SearchOptions): CapabilityDefinition {
     handler: async (req) => {
       const q = req.query.q;
       if (!q) throw new Error('Missing required parameter: q');
+      if (q.length > 500) throw new Error('Search query exceeds maximum length of 500 characters');
       const limit = req.query.limit ? parseInt(req.query.limit, 10) : undefined;
+      if (limit !== undefined && (isNaN(limit) || limit < 1 || limit > 100)) throw new Error('limit must be between 1 and 100');
       return handler(q, { limit });
     },
   };

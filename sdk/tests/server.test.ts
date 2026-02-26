@@ -164,7 +164,7 @@ describe('AgentDoor', () => {
 
     // Add to cart
     const addReq = mockReq('POST', '/.well-known/agents/api/cart/add', {
-      body: { item_id: '1', quantity: 2, name: 'Blue Mug', price: 28 },
+      body: { item_id: '1', quantity: 2, name: 'Blue Mug', price: 2800 },
       headers: { authorization: `Bearer ${token}` },
     });
     const addRes = mockRes();
@@ -180,7 +180,7 @@ describe('AgentDoor', () => {
     await mw(viewReq, viewRes, jest.fn());
     expect(viewRes._body.ok).toBe(true);
     expect(viewRes._body.data.items).toHaveLength(1);
-    expect(viewRes._body.data.subtotal).toBe(56);
+    expect(viewRes._body.data.subtotal_cents).toBe(5600);
 
     // Checkout
     const checkoutReq = mockReq('POST', '/.well-known/agents/api/checkout', {

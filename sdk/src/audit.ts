@@ -24,7 +24,7 @@
  * session, or the same capability on different sessions, are fully independent.
  */
 
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'node:crypto';
 import { Runtime } from '@rer/runtime';
 import { generateEd25519KeyPair, ed25519Sign, canonicalize } from '@rer/core';
 import type {
@@ -73,7 +73,7 @@ export class AuditManager {
       this.endSession(sessionToken);
     }
 
-    const runId = uuidv4();
+    const runId = randomUUID();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + this.ttlSeconds * 1000);
 

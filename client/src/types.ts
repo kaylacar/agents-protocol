@@ -80,7 +80,8 @@ export interface CartItem {
 
 export interface CartView {
   items: CartItem[];
-  subtotal: number;
+  /** Subtotal in integer cents (e.g. 5600 = $56.00). */
+  subtotal_cents: number;
 }
 
 // Checkout
@@ -103,4 +104,6 @@ export interface AgentClientConfig {
   retryDelay?: number;
   /** Default page size for paginate(). Default: 20 */
   pageSize?: number;
+  /** Suppress the insecure HTTP warning. Default: false */
+  allowInsecure?: boolean;
 }

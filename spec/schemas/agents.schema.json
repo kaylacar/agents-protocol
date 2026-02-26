@@ -4,14 +4,14 @@
   "title": "agents.json",
   "description": "Machine-readable capability declaration for the agents.txt protocol.",
   "type": "object",
-  "required": ["protocol_version", "site", "capabilities"],
+  "required": ["schema_version", "site", "capabilities"],
   "additionalProperties": false,
   "properties": {
-    "protocol_version": {
+    "schema_version": {
       "type": "string",
-      "description": "Semantic version of the agents.txt protocol this file conforms to.",
-      "pattern": "^\\d+\\.\\d+\\.\\d+$",
-      "examples": ["0.1.0"]
+      "description": "Version of the agents.txt protocol this file conforms to.",
+      "pattern": "^\\d+\\.\\d+(\\.\\d+)?$",
+      "examples": ["1.0", "0.1.0"]
     },
     "site": {
       "type": "object",
@@ -53,17 +53,23 @@
     "session": {
       "type": "object",
       "description": "Session configuration. Required if any capability has requires_session: true.",
+      "required": ["create"],
       "additionalProperties": false,
       "properties": {
-        "endpoint": {
+        "create": {
           "type": "string",
-          "description": "URL to create a session. Default: /.well-known/agents/api/session",
+          "description": "URL path to create a session (POST).",
           "examples": ["/.well-known/agents/api/session"]
         },
-        "ttl": {
+        "delete": {
+          "type": "string",
+          "description": "URL path to end a session (DELETE). Defaults to the create URL.",
+          "examples": ["/.well-known/agents/api/session"]
+        },
+        "ttl_seconds": {
           "type": "integer",
           "description": "Session time-to-live in seconds.",
-          "default": 1800,
+          "default": 3600,
           "minimum": 60,
           "examples": [1800, 3600]
         }
@@ -74,7 +80,7 @@
       "description": "Rate limiting configuration.",
       "additionalProperties": false,
       "properties": {
-        "max_requests_per_minute": {
+        "requests_per_minute": {
           "type": "integer",
           "description": "Maximum requests per minute across all endpoints.",
           "minimum": 1,

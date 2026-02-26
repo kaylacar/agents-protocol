@@ -1,8 +1,5 @@
-import { AgentDoorConfig, CapabilityDefinition } from './types';
-
-function flattenCapabilities(config: AgentDoorConfig): CapabilityDefinition[] {
-  return config.capabilities.flat();
-}
+import { AgentDoorConfig } from './types';
+import { flattenCapabilities } from './utils';
 
 export function generateAgentsTxt(config: AgentDoorConfig): string {
   const basePath = config.basePath ?? '/.well-known';

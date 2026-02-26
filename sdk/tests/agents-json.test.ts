@@ -75,7 +75,7 @@ describe('generateAgentsJson', () => {
 
   it('maps detail capability to :id route', () => {
     const caps: CapabilityDefinition[] = [
-      { name: 'detail', description: 'Get detail', method: 'GET', params: { id: { type: 'string', required: true } }, handler: async () => {} },
+      { name: 'detail', description: 'Get detail', method: 'GET', route: 'detail/:id', params: { id: { type: 'string', required: true } }, handler: async () => {} },
     ];
     const json = generateAgentsJson(makeConfig({ capabilities: caps })) as any;
     expect(json.capabilities[0].endpoint).toBe('/.well-known/agents/api/detail/:id');

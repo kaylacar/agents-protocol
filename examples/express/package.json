@@ -3,7 +3,8 @@
   "private": true,
   "scripts": {
     "start": "npx ts-node server.ts",
-    "build": "npx tsc"
+    "build": "npx tsc",
+    "test": "echo 'No tests for example'"
   },
   "dependencies": {
     "@agents-protocol/sdk": "^0.1.0",

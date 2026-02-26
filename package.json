@@ -3,7 +3,8 @@
   "private": true,
   "workspaces": [
     "sdk",
-    "client"
+    "client",
+    "examples/*"
   ],
   "scripts": {
     "build": "npm run build --workspaces",

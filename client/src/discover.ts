@@ -16,7 +16,7 @@ export async function discover(
     `${base}/agents.json`,
   ];
 
-  let lastError: Error | null = null;
+  const errors: Array<{ url: string; error: string }> = [];
 
   for (const url of candidates) {
     try {
@@ -24,7 +24,10 @@ export async function discover(
         headers: { Accept: 'application/json' },
       });
 
-      if (!res.ok) continue;
+      if (!res.ok) {
+        errors.push({ url, error: `HTTP ${res.status}` });
+        continue;
+      }
 
       const json = await res.json() as AgentsManifest;
 
@@ -37,14 +40,13 @@ export async function discover(
       return json;
     } catch (err) {
       if (err instanceof AgentClientError) throw err;
-      lastError = err as Error;
+      errors.push({ url, error: (err as Error).message });
     }
   }
 
+  const details = errors.map(e => `${e.url} (${e.error})`).join('; ');
   throw new AgentClientError(
-    `No agents.json found at ${siteUrl}. ` +
-    `Tried: ${candidates.join(', ')}. ` +
-    `Last error: ${lastError?.message ?? 'unknown'}`,
+    `No agents.json found at ${siteUrl}. Tried: ${details}`,
   );
 }
 

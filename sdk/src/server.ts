@@ -2,16 +2,39 @@ import type { Request, Response, NextFunction } from 'express';
 import {
   AgentDoorConfig,
   AgentRequest,
+  AgentsJsonManifest,
   CapabilityDefinition,
   OpenAPISpec,
   SessionData,
 } from './types';
 import { generateAgentsTxt } from './agents-txt';
 import { generateAgentsJson } from './agents-json';
+import { capabilityRoute } from './utils';
 import { SessionManager } from './session';
 import { RateLimiter } from './rate-limiter';
-import { AuditManager } from './audit';
-import { PolicyDeniedError } from '@rer/core';
+
+// AuditManager depends on @rer/core and @rer/runtime which are optional peer
+// dependencies. We lazily require it so the SDK works without @rer installed.
+type AuditManager = import('./audit').AuditManager;
+let AuditManagerClass: (new (ttlSeconds?: number) => AuditManager) | null = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  AuditManagerClass = require('./audit').AuditManager;
+} catch {
+  // @rer packages not installed — audit feature unavailable
+}
+// PolicyDeniedError from @rer/core is optional — define a local fallback
+// so the SDK compiles and runs without @rer packages installed.
+let PolicyDeniedError: new (...args: any[]) => Error;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  PolicyDeniedError = require('@rer/core').PolicyDeniedError;
+} catch {
+  // @rer/core not installed — define a class that will never match
+  PolicyDeniedError = class PolicyDeniedError extends Error {
+    constructor(message?: string) { super(message); this.name = 'PolicyDeniedError'; }
+  };
+}
 
 interface RouteEntry {
   method: string;
@@ -37,8 +60,9 @@ export class AgentDoor {
   private auditManager: AuditManager | null;
   private rateLimit: number;
   private corsOrigin: string;
+  private trustProxy: boolean;
   private agentsTxt: string;
-  private agentsJson: object;
+  private agentsJson: AgentsJsonManifest;
   private agentsJsonPath: string;
   private routes: RouteEntry[];
 
@@ -48,9 +72,17 @@ export class AgentDoor {
     this.capabilities = config.capabilities.flat();
     this.rateLimit = config.rateLimit ?? 60;
     this.corsOrigin = config.corsOrigin ?? '*';
+    this.trustProxy = config.trustProxy ?? false;
     this.sessionManager = new SessionManager(config.sessionTtl ?? 3600, this.capabilities);
     this.rateLimiter = new RateLimiter();
-    this.auditManager = config.audit ? new AuditManager(config.sessionTtl ?? 3600) : null;
+    if (config.audit && AuditManagerClass) {
+      this.auditManager = new AuditManagerClass(config.sessionTtl ?? 3600);
+    } else if (config.audit && !AuditManagerClass) {
+      console.warn('[AgentDoor] audit: true but @rer/core and @rer/runtime are not installed. Audit disabled.');
+      this.auditManager = null;
+    } else {
+      this.auditManager = null;
+    }
     this.agentsTxt = generateAgentsTxt(config);
     this.agentsJson = generateAgentsJson(config);
     this.agentsJsonPath = `${this.basePath}/agents.json`;
@@ -172,7 +204,7 @@ export class AgentDoor {
         return;
       }
 
-      const agentReq = expressToAgentRequest(req);
+      const agentReq = expressToAgentRequest(req, this.trustProxy);
       const result = await this.dispatch(agentReq);
 
       if (result === null) {
@@ -210,7 +242,7 @@ export class AgentDoor {
         });
       }
 
-      const agentReq = await webRequestToAgentRequest(request);
+      const agentReq = await webRequestToAgentRequest(request, this.trustProxy);
       const result = await this.dispatch(agentReq);
 
       if (result === null) {
@@ -418,7 +450,7 @@ function rateLimitResponse(resetAt: number): InternalResponse {
   };
 }
 
-function expressToAgentRequest(req: Request): AgentRequest {
+function expressToAgentRequest(req: Request, trustProxy: boolean): AgentRequest {
   const query: Record<string, string> = {};
   for (const [k, v] of Object.entries(req.query)) {
     if (typeof v === 'string') query[k] = v;
@@ -427,6 +459,10 @@ function expressToAgentRequest(req: Request): AgentRequest {
   for (const [k, v] of Object.entries(req.headers)) {
     if (typeof v === 'string') headers[k] = v;
   }
+  let ip = req.socket?.remoteAddress;
+  if (trustProxy) {
+    ip = req.ip ?? ip;
+  }
   return {
     method: req.method.toUpperCase(),
     path: req.path,
@@ -434,11 +470,11 @@ function expressToAgentRequest(req: Request): AgentRequest {
     body: (req.body as Record<string, unknown>) ?? {},
     params: (req.params as Record<string, string>) ?? {},
     headers,
-    ip: req.ip ?? req.socket?.remoteAddress,
+    ip,
   };
 }
 
-async function webRequestToAgentRequest(request: globalThis.Request): Promise<AgentRequest> {
+async function webRequestToAgentRequest(request: globalThis.Request, trustProxy: boolean): Promise<AgentRequest> {
   const url = new URL(request.url);
   const query: Record<string, string> = {};
   url.searchParams.forEach((v, k) => { query[k] = v; });
@@ -457,6 +493,11 @@ async function webRequestToAgentRequest(request: globalThis.Request): Promise<Ag
     } catch { /* empty body */ }
   }
 
+  // Only trust X-Forwarded-For when trustProxy is enabled
+  const ip = trustProxy
+    ? headers['x-forwarded-for']?.split(',')[0]?.trim()
+    : undefined;
+
   return {
     method: request.method.toUpperCase(),
     path: url.pathname,
@@ -464,7 +505,7 @@ async function webRequestToAgentRequest(request: globalThis.Request): Promise<Ag
     body,
     params: {},
     headers,
-    ip: headers['x-forwarded-for']?.split(',')[0]?.trim(),
+    ip,
   };
 }
 
@@ -482,13 +523,6 @@ function extractToken(req: AgentRequest): string | null {
   const legacy = req.headers['x-session-token'];
   if (legacy && legacy.trim().length > 0) return legacy.trim();
   return null;
-}
-
-function capabilityRoute(cap: CapabilityDefinition, apiBase: string): string {
-  const parts = cap.name.split('.');
-  if (cap.name === 'detail') return `${apiBase}/detail/:id`;
-  if (parts.length > 1) return `${apiBase}/${parts.join('/')}`;
-  return `${apiBase}/${cap.name}`;
 }
 
 function matchRoute(pattern: string, path: string): { params: Record<string, string> } | null {

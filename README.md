@@ -55,6 +55,8 @@ Your site now serves `agents.txt`, `agents.json`, and all the API routes automat
 
 Pass `audit: true` to record every agent action as a signed, hash-chained artifact ([RER](https://github.com/kaylacar/rer)). Every session produces tamper-evident proof of exactly what the agent did and what your site returned.
 
+> **Note:** Audit trails require the optional `@rer/core` and `@rer/runtime` peer dependencies. These are currently published on the [RER monorepo](https://github.com/kaylacar/rer). Without them, set `audit: false` (the default) and all other SDK features work normally.
+
 ```typescript
 const door = new AgentDoor({
   site: { name: 'My Store', url: 'https://example.com' },
@@ -168,7 +170,7 @@ All four are by the same author and designed to work together.
 ```bash
 npm install      # installs sdk + client (workspaces)
 npm run build
-npm test         # 87 tests
+npm test         # 123 tests (101 without optional @rer peer deps)
 ```
 
 ---

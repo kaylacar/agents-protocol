@@ -1,6 +1,18 @@
-import { AuditManager } from '../src/audit';
+// Skip the entire suite when @rer packages are not available
+let hasRer = false;
+try {
+  require('@rer/core');
+  require('@rer/runtime');
+  hasRer = true;
+} catch { /* not installed */ }
 
-describe('AuditManager', () => {
+const describeIfRer = hasRer ? describe : describe.skip;
+
+// Dynamic import to avoid compile errors when @rer is missing
+const AuditManagerModule = hasRer ? require('../src/audit') : null;
+type AuditManager = import('../src/audit').AuditManager;
+
+describeIfRer('AuditManager', () => {
   let audit: AuditManager;
 
   afterEach(() => {
@@ -8,7 +20,7 @@ describe('AuditManager', () => {
   });
 
   it('generates a key pair on construction', () => {
-    audit = new AuditManager();
+    audit = new AuditManagerModule.AuditManager();
     // DER form: 44-byte Buffer (12-byte ASN.1 prefix + 32 raw bytes)
     expect(audit.getPublicKeyDER()).toBeInstanceOf(Buffer);
     expect(audit.getPublicKeyDER().length).toBe(44);
@@ -18,13 +30,13 @@ describe('AuditManager', () => {
   });
 
   it('starts a session and creates a runtime', () => {
-    audit = new AuditManager(3600);
+    audit = new AuditManagerModule.AuditManager(3600);
     // Should not throw
     audit.startSession('token-1', 'https://test.com', ['search', 'browse']);
   });
 
   it('logs capability calls through the runtime', async () => {
-    audit = new AuditManager(3600);
+    audit = new AuditManagerModule.AuditManager(3600);
     audit.startSession('token-1', 'https://test.com', ['search']);
 
     const result = await audit.callCapability(
@@ -38,7 +50,7 @@ describe('AuditManager', () => {
   });
 
   it('produces a signed artifact when session ends', async () => {
-    audit = new AuditManager(3600);
+    audit = new AuditManagerModule.AuditManager(3600);
     audit.startSession('token-1', 'https://test.com', ['search']);
 
     await audit.callCapability(
@@ -59,7 +71,7 @@ describe('AuditManager', () => {
   });
 
   it('stores artifact for retrieval after session ends', async () => {
-    audit = new AuditManager(3600);
+    audit = new AuditManagerModule.AuditManager(3600);
     audit.startSession('token-1', 'https://test.com', ['search']);
 
     await audit.callCapability('token-1', 'search', { q: 'x' }, async () => []);
@@ -71,12 +83,12 @@ describe('AuditManager', () => {
   });
 
   it('returns null for unknown session artifacts', () => {
-    audit = new AuditManager();
+    audit = new AuditManagerModule.AuditManager();
     expect(audit.getArtifact('nonexistent')).toBeNull();
   });
 
   it('falls through to handler when no runtime exists', async () => {
-    audit = new AuditManager();
+    audit = new AuditManagerModule.AuditManager();
     // Don't start a session — callCapability should just run the handler
     const result = await audit.callCapability(
       'no-session',
@@ -88,7 +100,7 @@ describe('AuditManager', () => {
   });
 
   it('logs multiple capability calls in sequence', async () => {
-    audit = new AuditManager(3600);
+    audit = new AuditManagerModule.AuditManager(3600);
     audit.startSession('token-1', 'https://test.com', ['search', 'browse']);
 
     await audit.callCapability('token-1', 'search', { q: 'a' }, async () => [1]);
@@ -104,7 +116,7 @@ describe('AuditManager', () => {
   });
 
   it('propagates PolicyDeniedError and does not run the handler', async () => {
-    audit = new AuditManager(3600);
+    audit = new AuditManagerModule.AuditManager(3600);
     // Start session with no capabilities allowed so any callTool triggers a denial
     audit.startSession('token-deny', 'https://test.com', []);
 
@@ -120,7 +132,7 @@ describe('AuditManager', () => {
   });
 
   it('artifact events form a valid hash chain', async () => {
-    audit = new AuditManager(3600);
+    audit = new AuditManagerModule.AuditManager(3600);
     audit.startSession('token-1', 'https://test.com', ['search']);
 
     await audit.callCapability('token-1', 'search', { q: 'test' }, async () => []);

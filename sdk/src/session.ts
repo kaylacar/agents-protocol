@@ -1,4 +1,4 @@
-import { v4 as uuidv4 } from 'uuid';
+import { randomBytes } from 'node:crypto';
 import { SessionData, CapabilityDefinition } from './types';
 
 export class SessionManager {
@@ -15,7 +15,7 @@ export class SessionManager {
   private capabilityNames: string[];
 
   createSession(siteId: string): { sessionToken: string; expiresAt: Date; capabilities: string[] } {
-    const sessionToken = uuidv4();
+    const sessionToken = randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + this.ttl * 1000);
     const session: SessionData = {
       sessionToken,

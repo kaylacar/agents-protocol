@@ -1,19 +1,9 @@
-import { AgentDoorConfig, CapabilityDefinition } from './types';
+import { AgentDoorConfig, AgentsJsonManifest } from './types';
+import { flattenCapabilities, capabilityRoute } from './utils';
 
-function flattenCapabilities(config: AgentDoorConfig): CapabilityDefinition[] {
-  return config.capabilities.flat();
-}
-
-function capabilityToEndpoint(cap: CapabilityDefinition, basePath: string): string {
-  const base = `${basePath}/agents/api`;
-  const parts = cap.name.split('.');
-  if (cap.name === 'detail') return `${base}/detail/:id`;
-  if (parts.length > 1) return `${base}/${parts.join('/')}`;
-  return `${base}/${cap.name}`;
-}
-
-export function generateAgentsJson(config: AgentDoorConfig): object {
+export function generateAgentsJson(config: AgentDoorConfig): AgentsJsonManifest {
   const basePath = config.basePath ?? '/.well-known';
+  const apiBase = `${basePath}/agents/api`;
   const capabilities = flattenCapabilities(config);
 
   return {
@@ -28,14 +18,14 @@ export function generateAgentsJson(config: AgentDoorConfig): object {
       name: cap.name,
       description: cap.description,
       method: cap.method,
-      endpoint: capabilityToEndpoint(cap, basePath),
+      endpoint: capabilityRoute(cap, apiBase),
       ...(cap.params && { params: cap.params }),
       ...(cap.requiresSession && { requires_session: true }),
       ...(cap.humanHandoff && { human_handoff: true }),
     })),
     session: {
-      create: `${basePath}/agents/api/session`,
-      delete: `${basePath}/agents/api/session`,
+      create: `${apiBase}/session`,
+      delete: `${apiBase}/session`,
       ...(config.sessionTtl && { ttl_seconds: config.sessionTtl }),
     },
     ...(config.flows && config.flows.length > 0 && {
@@ -49,7 +39,7 @@ export function generateAgentsJson(config: AgentDoorConfig): object {
     ...(config.audit && {
       audit: {
         enabled: true,
-        endpoint: `${basePath}/agents/api/audit/:session_id`,
+        endpoint: `${apiBase}/audit/:session_id`,
         description: 'Retrieve signed RER artifact for a completed session',
       },
     }),

@@ -9,6 +9,7 @@ export function detail({ handler }: DetailOptions): CapabilityDefinition {
     name: 'detail',
     description: 'Get detailed information about a specific item',
     method: 'GET',
+    route: 'detail/:id',
     params: {
       id: { type: 'string', required: true, description: 'Item identifier' },
     },

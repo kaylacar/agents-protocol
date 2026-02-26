@@ -23,6 +23,8 @@ export interface CapabilityDefinition {
   params?: Record<string, { type: string; required?: boolean; description?: string; default?: unknown; enum?: unknown[] }>;
   requiresSession?: boolean;
   humanHandoff?: boolean;
+  /** Custom route pattern suffix, e.g. 'detail/:id'. Overrides the default name-based routing. */
+  route?: string;
   handler: (req: AgentRequest, session?: SessionData | null) => Promise<unknown>;
 }
 
@@ -43,6 +45,8 @@ export interface AgentDoorConfig {
   basePath?: string;
   /** CORS Access-Control-Allow-Origin value. Defaults to '*'. Set to your site URL for stricter security. */
   corsOrigin?: string;
+  /** When true, trust X-Forwarded-For for client IP (use behind a reverse proxy). Default: false. */
+  trustProxy?: boolean;
 }
 
 export interface SessionData {
@@ -64,8 +68,45 @@ export interface CartItem {
   itemId: string;
   name?: string;
   quantity: number;
+  /** Price in integer cents (e.g. 2800 = $28.00). */
   price?: number;
   metadata?: Record<string, unknown>;
+}
+
+/** Typed shape of the generated agents.json manifest */
+export interface AgentsJsonManifest {
+  schema_version: string;
+  site: {
+    name: string;
+    url: string;
+    description?: string;
+    contact?: string;
+  };
+  capabilities: Array<{
+    name: string;
+    description: string;
+    method: string;
+    endpoint: string;
+    params?: Record<string, unknown>;
+    requires_session?: boolean;
+    human_handoff?: boolean;
+  }>;
+  session: {
+    create: string;
+    delete: string;
+    ttl_seconds?: number;
+  };
+  flows?: Array<{
+    name: string;
+    description: string;
+    steps: string[];
+  }>;
+  rate_limit?: { requests_per_minute: number };
+  audit?: {
+    enabled: boolean;
+    endpoint: string;
+    description: string;
+  };
 }
 
 /** OpenAPI 3.x subset used by AgentDoor.fromOpenAPI() */

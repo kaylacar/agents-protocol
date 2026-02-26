@@ -1,6 +1,16 @@
 import { AgentDoor } from '../src/server';
 import { search, cart, checkout } from '../src/capabilities';
 
+// Skip the entire suite when @rer packages are not available
+let hasRer = false;
+try {
+  require('@rer/core');
+  require('@rer/runtime');
+  hasRer = true;
+} catch { /* not installed */ }
+
+const describeIfRer = hasRer ? describe : describe.skip;
+
 function mockReq(method: string, path: string, opts?: { body?: any; query?: Record<string, string>; headers?: Record<string, string>; ip?: string }): any {
   return {
     method,
@@ -31,7 +41,7 @@ function mockRes(): any {
   return res;
 }
 
-describe('AgentDoor with audit: true', () => {
+describeIfRer('AgentDoor with audit: true', () => {
   let door: AgentDoor;
 
   afterEach(() => {

@@ -153,7 +153,7 @@ Agents should handle errors gracefully:
 ```
 # 1. Discover capabilities
 GET /.well-known/agents.json
--> 200: { protocol_version, site, capabilities, ... }
+-> 200: { schema_version, site, capabilities, ... }
 
 # 2. Search (no session needed)
 GET /.well-known/agents/api/search?q=blue+mugs

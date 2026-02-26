@@ -46,8 +46,9 @@ export function cart(): CapabilityDefinition[] {
     handler: async (_req, session) => {
       if (!session) throw new Error('Session required');
       const items = session.cartItems;
-      const subtotal = items.reduce((sum, item) => sum + (item.price ?? 0) * item.quantity, 0);
-      return { items, subtotal };
+      // Price is in integer cents; multiplication stays exact
+      const subtotal_cents = items.reduce((sum, item) => sum + (item.price ?? 0) * item.quantity, 0);
+      return { items, subtotal_cents };
     },
   };
 
