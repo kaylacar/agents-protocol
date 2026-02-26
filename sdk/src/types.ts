@@ -41,6 +41,8 @@ export interface AgentDoorConfig {
   sessionTtl?: number;
   audit?: boolean;
   basePath?: string;
+  /** CORS Access-Control-Allow-Origin value. Defaults to '*'. Set to your site URL for stricter security. */
+  corsOrigin?: string;
 }
 
 export interface SessionData {
@@ -52,7 +54,7 @@ export interface SessionData {
   createdAt: Date;
 }
 
-export interface AgentResponse<T = any> {
+export interface AgentResponse<T = unknown> {
   ok: boolean;
   data?: T;
   error?: string;

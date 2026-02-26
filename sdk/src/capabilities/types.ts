@@ -1,7 +1,7 @@
 import type { AgentRequest, SessionData } from '../types';
 
 export interface CapabilityHandler {
-  (req: AgentRequest, session?: SessionData | null): Promise<any>;
+  (req: AgentRequest, session?: SessionData | null): Promise<unknown>;
 }
 
 export type RegisteredCapability = {

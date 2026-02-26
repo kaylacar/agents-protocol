@@ -282,7 +282,7 @@ export class AgentClient {
       'User-Agent': this.userAgent,
     };
     if (this.session) {
-      headers['Authorization'] = `Bearer ${this.session.session_token}`;
+      headers['X-Agent-Session'] = this.session.session_token;
     }
     return headers;
   }

@@ -1,5 +1,5 @@
 import express from 'express';
-import { AgentDoor, search, browse, detail, cart, checkout, contact } from '../../sdk/src';
+import { AgentDoor, search, browse, detail, cart, checkout, contact } from '@agents-protocol/sdk';
 
 // --- Fake product database ---
 

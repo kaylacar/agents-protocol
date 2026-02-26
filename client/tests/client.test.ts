@@ -218,7 +218,7 @@ describe('AgentClient', () => {
   });
 
   describe('Authorization header', () => {
-    it('sends Bearer token when session is active', async () => {
+    it('sends X-Agent-Session token when session is active', async () => {
       let capturedHeaders: Record<string, string> = {};
       const fetchImpl = manifestFetch({
         '/search': (_url, init) => {
@@ -231,7 +231,7 @@ describe('AgentClient', () => {
       const client = new AgentClient(SITE_URL, { fetch: fetchImpl });
       await client.connect();
       await client.search('test');
-      expect(capturedHeaders['Authorization']).toBe(`Bearer ${SESSION.session_token}`);
+      expect(capturedHeaders['X-Agent-Session']).toBe(SESSION.session_token);
     });
   });
 

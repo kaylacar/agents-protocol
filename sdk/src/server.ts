@@ -36,6 +36,7 @@ export class AgentDoor {
   private rateLimiter: RateLimiter;
   private auditManager: AuditManager | null;
   private rateLimit: number;
+  private corsOrigin: string;
   private agentsTxt: string;
   private agentsJson: object;
   private agentsJsonPath: string;
@@ -46,6 +47,7 @@ export class AgentDoor {
     this.basePath = config.basePath ?? '/.well-known';
     this.capabilities = config.capabilities.flat();
     this.rateLimit = config.rateLimit ?? 60;
+    this.corsOrigin = config.corsOrigin ?? '*';
     this.sessionManager = new SessionManager(config.sessionTtl ?? 3600, this.capabilities);
     this.rateLimiter = new RateLimiter();
     this.auditManager = config.audit ? new AuditManager(config.sessionTtl ?? 3600) : null;
@@ -161,9 +163,9 @@ export class AgentDoor {
     return async (req: Request, res: Response, next: NextFunction) => {
       // Auto-discovery + CORS on every response
       res.setHeader('Link', `<${this.agentsJsonPath}>; rel="${AGENTS_REL}"`);
-      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Origin', this.corsOrigin);
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Session-Token');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Agent-Session, X-Session-Token');
 
       if (req.method === 'OPTIONS') {
         res.status(204).end();
@@ -198,12 +200,13 @@ export class AgentDoor {
 
   handler(): (request: globalThis.Request) => Promise<globalThis.Response> {
     const agentsJsonPath = this.agentsJsonPath;
+    const origin = this.corsOrigin;
     return async (request: globalThis.Request): Promise<globalThis.Response> => {
       // CORS preflight
       if (request.method === 'OPTIONS') {
         return new globalThis.Response(null, {
           status: 204,
-          headers: corsHeaders(agentsJsonPath),
+          headers: corsHeaders(agentsJsonPath, origin),
         });
       }
 
@@ -213,12 +216,12 @@ export class AgentDoor {
       if (result === null) {
         return new globalThis.Response(JSON.stringify({ ok: false, error: 'Not found' }), {
           status: 404,
-          headers: { 'Content-Type': 'application/json', ...corsHeaders(agentsJsonPath) },
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(agentsJsonPath, origin) },
         });
       }
 
       const headers: Record<string, string> = {
-        ...corsHeaders(agentsJsonPath),
+        ...corsHeaders(agentsJsonPath, origin),
         'Content-Type': result.contentType ?? 'application/json',
         ...(result.headers ?? {}),
       };
@@ -307,7 +310,12 @@ export class AgentDoor {
         pattern: `${apiBase}/audit/:session_id`,
         handler: async (req) => {
           const rate = this.checkRate(req);
-        if (!rate.allowed) return rateLimitResponse(rate.resetAt);
+          if (!rate.allowed) return rateLimitResponse(rate.resetAt);
+          const token = extractToken(req);
+          if (!token) return { status: 401, body: { ok: false, error: 'Missing session token' } };
+          if (token !== req.params.session_id) {
+            return { status: 403, body: { ok: false, error: 'Token does not match requested session' } };
+          }
           const artifact = this.auditManager!.getArtifact(req.params.session_id);
           if (!artifact) return { status: 404, body: { ok: false, error: 'Audit artifact not found' } };
           return { status: 200, body: { ok: true, data: artifact } };
@@ -322,7 +330,7 @@ export class AgentDoor {
         pattern,
         handler: async (req) => {
           const rate = this.checkRate(req);
-        if (!rate.allowed) return rateLimitResponse(rate.resetAt);
+          if (!rate.allowed) return rateLimitResponse(rate.resetAt);
 
           let session: SessionData | null = null;
           if (cap.requiresSession) {
@@ -388,11 +396,11 @@ export class AgentDoor {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function corsHeaders(agentsJsonPath: string): Record<string, string> {
+function corsHeaders(agentsJsonPath: string, origin: string = '*'): Record<string, string> {
   return {
-    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Session-Token',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Agent-Session, X-Session-Token',
     'Link': `<${agentsJsonPath}>; rel="agents"`,
   };
 }
@@ -461,9 +469,19 @@ async function webRequestToAgentRequest(request: globalThis.Request): Promise<Ag
 }
 
 function extractToken(req: AgentRequest): string | null {
+  // Spec-defined header (preferred)
+  const agentSession = req.headers['x-agent-session'];
+  if (agentSession && agentSession.trim().length > 0) return agentSession.trim();
+  // Also accept Authorization: Bearer for compatibility
   const auth = req.headers['authorization'];
-  if (auth?.startsWith('Bearer ')) return auth.slice(7);
-  return req.headers['x-session-token'] ?? null;
+  if (auth?.startsWith('Bearer ')) {
+    const token = auth.slice(7).trim();
+    if (token.length > 0) return token;
+  }
+  // Legacy header
+  const legacy = req.headers['x-session-token'];
+  if (legacy && legacy.trim().length > 0) return legacy.trim();
+  return null;
 }
 
 function capabilityRoute(cap: CapabilityDefinition, apiBase: string): string {

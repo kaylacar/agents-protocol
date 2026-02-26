@@ -6,6 +6,7 @@
     "build": "npx tsc"
   },
   "dependencies": {
+    "@agents-protocol/sdk": "^0.1.0",
     "express": "^5.2.1"
   },
   "devDependencies": {

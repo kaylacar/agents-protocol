@@ -8,6 +8,8 @@ export interface RequestOptions {
   fetchImpl?: typeof fetch;
   maxRetries?: number;
   retryDelay?: number;
+  /** Request timeout in milliseconds. Default: 30000 (30s). */
+  timeoutMs?: number;
 }
 
 function buildUrl(base: string, query?: Record<string, string | number | undefined>): string {
@@ -36,6 +38,7 @@ export async function request<T = unknown>(
     fetchImpl = fetch,
     maxRetries = 3,
     retryDelay = 1000,
+    timeoutMs = 30_000,
   } = opts;
 
   const fullUrl = buildUrl(url, query);
@@ -59,7 +62,19 @@ export async function request<T = unknown>(
       await sleep(retryDelay * Math.pow(2, attempt - 1));
     }
 
-    const res = await fetchImpl(fullUrl, init);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    let res: globalThis.Response;
+    try {
+      res = await fetchImpl(fullUrl, { ...init, signal: controller.signal });
+    } catch (err) {
+      clearTimeout(timer);
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        throw new AgentClientError(`Request to ${fullUrl} timed out after ${timeoutMs}ms`);
+      }
+      throw err;
+    }
+    clearTimeout(timer);
 
     if (res.status === 429) {
       lastError = new AgentClientError('Rate limit exceeded — retrying', 429);
@@ -70,8 +85,22 @@ export async function request<T = unknown>(
       throw new AgentClientError(`HTTP ${res.status} from ${fullUrl}`, res.status);
     }
 
-    const json = (await res.json()) as ApiResponse<T>;
-    return json;
+    let json: unknown;
+    try {
+      json = await res.json();
+    } catch {
+      throw new AgentClientError(
+        `Invalid JSON response from ${fullUrl} (HTTP ${res.status})`,
+        res.status,
+      );
+    }
+    if (typeof json !== 'object' || json === null || typeof (json as Record<string, unknown>).ok !== 'boolean') {
+      throw new AgentClientError(
+        `Unexpected response format from ${fullUrl}: missing "ok" field`,
+        res.status,
+      );
+    }
+    return json as ApiResponse<T>;
   }
 
   throw lastError ?? new AgentClientError('Max retries exceeded');

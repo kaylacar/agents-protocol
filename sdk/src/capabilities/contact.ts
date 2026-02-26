@@ -20,6 +20,9 @@ export function contact({ handler }: ContactOptions): CapabilityDefinition {
           || !name || !email || !message) {
         throw new Error('Missing required parameters: name, email, message');
       }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        throw new Error('Invalid email address format');
+      }
       await handler({ name, email, message });
       return { sent: true };
     },

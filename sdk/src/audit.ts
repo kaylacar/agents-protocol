@@ -174,8 +174,8 @@ export class AuditManager {
 
     try {
       entry.runtime.end('completed', 'Session ended');
-    } catch {
-      // Runtime may already be ended or expired
+    } catch (err) {
+      console.warn(`[AuditManager] runtime.end() failed for session ${sessionToken}:`, err);
     }
 
     let artifact: RuntimeRunArtifact;
@@ -225,8 +225,8 @@ export class AuditManager {
         entry.runtime.end('completed', 'Shutdown');
         const artifact = entry.runtime.buildArtifact();
         this.artifacts.set(token, { artifact, expiresAt: Date.now() + this.ttlSeconds * 1000 });
-      } catch {
-        // Best-effort on shutdown
+      } catch (err) {
+        console.warn(`[AuditManager] Failed to seal session ${token} during shutdown:`, err);
       }
     }
     this.sessions.clear();
@@ -241,8 +241,8 @@ export class AuditManager {
           entry.runtime.end('completed', 'TTL expired');
           const artifact = entry.runtime.buildArtifact();
           this.artifacts.set(token, { artifact, expiresAt: now + this.ttlSeconds * 1000 });
-        } catch {
-          // ignore
+        } catch (err) {
+          console.warn(`[AuditManager] Failed to seal expired session ${token}:`, err);
         }
         this.sessions.delete(token);
         this.clearPendingHandlers(token);

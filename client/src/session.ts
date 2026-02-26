@@ -28,7 +28,7 @@ export async function endSession(
 ): Promise<void> {
   await request(sessionEndpoint, {
     method: 'DELETE',
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { 'X-Agent-Session': token },
     fetchImpl,
   });
 }
