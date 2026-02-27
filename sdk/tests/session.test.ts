@@ -46,14 +46,6 @@ describe('SessionManager', () => {
     expect(manager.validateSession(sessionToken)).toBeNull();
   });
 
-  it('getSession is an alias for validateSession', () => {
-    manager = new SessionManager(3600);
-    const { sessionToken } = manager.createSession('https://test.com');
-    const session = manager.getSession(sessionToken);
-    expect(session).not.toBeNull();
-    expect(session!.sessionToken).toBe(sessionToken);
-  });
-
   it('includes capability names from constructor', () => {
     const caps = [
       { name: 'search', description: 'Search', method: 'GET' as const, handler: async () => [] },

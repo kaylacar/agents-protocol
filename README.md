@@ -111,8 +111,8 @@ await client.connect();
 const results = await client.search('blue mug');
 await client.cartAdd(results[0].id, 1, { name: results[0].name, price: results[0].price });
 
-const { checkout_url } = await client.checkout();
-// hand checkout_url to the human — agent stops here
+const { handoff_url } = await client.checkout();
+// hand handoff_url to the human — agent stops here
 
 const artifact = await client.getAuditArtifact(); // signed proof
 await client.disconnect();
@@ -131,7 +131,7 @@ The client reads `agents.json` on first use and caches it. `connect()` creates a
 | `detail` | GET | no |
 | `cart.add` | POST | yes |
 | `cart.view` | GET | yes |
-| `cart.update` | PUT | yes |
+| `cart.update` | PATCH | yes |
 | `cart.remove` | DELETE | yes |
 | `checkout` | POST | yes |
 | `contact` | POST | no |
@@ -170,7 +170,7 @@ All four are by the same author and designed to work together.
 ```bash
 npm install      # installs sdk + client (workspaces)
 npm run build
-npm test         # 123 tests (101 without optional @rer peer deps)
+npm test
 ```
 
 ---

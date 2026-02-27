@@ -140,6 +140,7 @@ export class AuditManager {
     const entry = this.sessions.get(sessionToken);
     if (!entry) {
       // No active session — run handler directly (no audit trail for this call).
+      console.warn(`[AuditManager] No active audit session for token ${sessionToken.slice(0, 8)}…; capability '${capabilityName}' will not be audited.`);
       return handler();
     }
 

@@ -1,7 +1,7 @@
 import { AgentDoorConfig, AgentsJsonManifest } from './types';
 import { flattenCapabilities, capabilityRoute } from './utils';
 
-export function generateAgentsJson(config: AgentDoorConfig): AgentsJsonManifest {
+export function generateAgentsJson(config: AgentDoorConfig, auditPublicKey?: string): AgentsJsonManifest {
   const basePath = config.basePath ?? '/.well-known';
   const apiBase = `${basePath}/agents/api`;
   const capabilities = flattenCapabilities(config);
@@ -41,6 +41,7 @@ export function generateAgentsJson(config: AgentDoorConfig): AgentsJsonManifest 
         enabled: true,
         endpoint: `${apiBase}/audit/:session_id`,
         description: 'Retrieve signed RER artifact for a completed session',
+        ...(auditPublicKey && { public_key: auditPublicKey }),
       },
     }),
   };

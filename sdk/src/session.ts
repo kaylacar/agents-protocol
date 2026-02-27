@@ -6,10 +6,11 @@ export class SessionManager {
   private cleanupInterval: ReturnType<typeof setInterval>;
   private ttl: number;
 
-  constructor(ttlSeconds: number = 3600, capabilities: CapabilityDefinition[] = []) {
+  constructor(ttlSeconds: number = 1800, capabilities: CapabilityDefinition[] = []) {
     this.ttl = ttlSeconds;
     this.capabilityNames = capabilities.map(c => c.name);
     this.cleanupInterval = setInterval(() => this.cleanup(), 60_000);
+    if (this.cleanupInterval.unref) this.cleanupInterval.unref();
   }
 
   private capabilityNames: string[];
@@ -37,10 +38,6 @@ export class SessionManager {
       return null;
     }
     return session;
-  }
-
-  getSession(token: string): SessionData | null {
-    return this.validateSession(token);
   }
 
   endSession(token: string): void {

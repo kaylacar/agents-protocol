@@ -9,7 +9,7 @@ import {
 } from './types';
 import { generateAgentsTxt } from './agents-txt';
 import { generateAgentsJson } from './agents-json';
-import { capabilityRoute } from './utils';
+import { flattenCapabilities, capabilityRoute } from './utils';
 import { SessionManager } from './session';
 import { RateLimiter } from './rate-limiter';
 
@@ -69,7 +69,7 @@ export class AgentDoor {
   constructor(config: AgentDoorConfig) {
     this.config = config;
     this.basePath = config.basePath ?? '/.well-known';
-    this.capabilities = config.capabilities.flat();
+    this.capabilities = flattenCapabilities(config);
 
     if (this.capabilities.length === 0) {
       throw new Error('At least one capability is required');
@@ -85,7 +85,7 @@ export class AgentDoor {
       }
     }
 
-    const sessionTtl = config.sessionTtl ?? 3600;
+    const sessionTtl = config.sessionTtl ?? 1800;
     if (sessionTtl < 60) {
       throw new Error('sessionTtl must be at least 60 seconds');
     }
@@ -96,7 +96,7 @@ export class AgentDoor {
     this.sessionManager = new SessionManager(sessionTtl, this.capabilities);
     this.rateLimiter = new RateLimiter();
     if (config.audit && AuditManagerClass) {
-      this.auditManager = new AuditManagerClass(config.sessionTtl ?? 3600);
+      this.auditManager = new AuditManagerClass(sessionTtl);
     } else if (config.audit && !AuditManagerClass) {
       console.warn('[AgentDoor] audit: true but @rer/core and @rer/runtime are not installed. Audit disabled.');
       this.auditManager = null;
@@ -104,7 +104,10 @@ export class AgentDoor {
       this.auditManager = null;
     }
     this.agentsTxt = generateAgentsTxt(config);
-    this.agentsJson = generateAgentsJson(config);
+    const auditPublicKey = this.auditManager
+      ? Buffer.from(this.auditManager.getPublicKeyRaw()).toString('base64')
+      : undefined;
+    this.agentsJson = generateAgentsJson(config, auditPublicKey);
     this.agentsJsonPath = `${this.basePath}/agents.json`;
     this.routes = this.buildRoutes();
   }
@@ -424,9 +427,19 @@ export class AgentDoor {
             const successStatus = cap.method === 'POST' ? 201 : 200;
             return { status: successStatus, body: { ok: true, data } };
           } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : 'Unknown error';
-            const status = err instanceof PolicyDeniedError ? 403 : 400;
-            return { status, body: { ok: false, error: message } };
+            if (err instanceof PolicyDeniedError) {
+              return { status: 403, body: { ok: false, error: err.message } };
+            }
+            // Known validation errors from handlers (throw new Error(...)) → 400
+            // Unexpected errors (TypeError, ReferenceError, etc.) → 500
+            const isValidationError = err instanceof Error
+              && !(err instanceof TypeError)
+              && !(err instanceof RangeError)
+              && !(err instanceof ReferenceError)
+              && !(err instanceof SyntaxError);
+            const message = err instanceof Error ? err.message : 'Internal server error';
+            const status = isValidationError ? 400 : 500;
+            return { status, body: { ok: false, error: status === 500 ? 'Internal server error' : message } };
           }
         },
       });

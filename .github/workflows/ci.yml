@@ -23,4 +23,4 @@ jobs:
         run: npm run typecheck --workspace=sdk --workspace=client
       - run: npm test --workspaces
       - name: Security audit
-        run: npm audit --omit=dev || true
+        run: npm audit --omit=dev --audit-level=critical

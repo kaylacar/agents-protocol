@@ -106,6 +106,7 @@ export interface AgentsJsonManifest {
     enabled: boolean;
     endpoint: string;
     description: string;
+    public_key?: string;
   };
 }
 

@@ -18,6 +18,9 @@ export function cart(): CapabilityDefinition[] {
       if (typeof item_id !== 'string' || typeof quantity !== 'number') {
         throw new Error('Missing required parameters: item_id, quantity');
       }
+      if (item_id.length > 256) {
+        throw new Error('item_id must not exceed 256 characters');
+      }
       if (!Number.isInteger(quantity) || quantity < 1 || quantity > 10_000) {
         throw new Error('quantity must be a positive integer (max 10,000)');
       }
@@ -67,6 +70,9 @@ export function cart(): CapabilityDefinition[] {
       if (typeof item_id !== 'string' || typeof quantity !== 'number') {
         throw new Error('Missing required parameters: item_id, quantity');
       }
+      if (item_id.length > 256) {
+        throw new Error('item_id must not exceed 256 characters');
+      }
       if (!Number.isInteger(quantity) || quantity < 0 || quantity > 10_000) {
         throw new Error('quantity must be a non-negative integer (max 10,000)');
       }
@@ -96,6 +102,7 @@ export function cart(): CapabilityDefinition[] {
       if (!session) throw new Error('Session required');
       const item_id = req.body.item_id;
       if (typeof item_id !== 'string' || !item_id) throw new Error('Missing required parameter: item_id');
+      if (item_id.length > 256) throw new Error('item_id must not exceed 256 characters');
 
       const index = session.cartItems.findIndex(i => i.itemId === item_id);
       if (index === -1) throw new Error(`Item not found in cart: ${item_id}`);

@@ -56,9 +56,11 @@ export async function request<T = unknown>(
     init.body = JSON.stringify(body);
   }
 
-  let lastError: Error | null = null;
+  let lastError: AgentClientError | null = null;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    if (attempt > 0) {
+    if (attempt > 0 && lastError?.statusCode !== 429) {
+      // Non-429 retries use standard backoff; 429 backoff is handled inline
+      // after reading the Retry-After header.
       await sleep(retryDelay * Math.pow(2, attempt - 1));
     }
 
@@ -77,6 +79,14 @@ export async function request<T = unknown>(
     clearTimeout(timer);
 
     if (res.status === 429) {
+      // Respect the server's Retry-After header per spec
+      const retryAfterHeader = res.headers.get('Retry-After');
+      const serverDelaySec = retryAfterHeader ? parseInt(retryAfterHeader, 10) : 0;
+      const serverDelayMs = Number.isFinite(serverDelaySec) ? serverDelaySec * 1000 : 0;
+      const backoffMs = retryDelay * Math.pow(2, attempt);
+      if (attempt < maxRetries) {
+        await sleep(Math.max(serverDelayMs, backoffMs));
+      }
       lastError = new AgentClientError('Rate limit exceeded — retrying', 429);
       continue;
     }

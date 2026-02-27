@@ -40,6 +40,7 @@ export interface AgentsAuditConfig {
   enabled: boolean;
   endpoint: string;
   description?: string;
+  public_key?: string;
 }
 
 export interface AgentsManifest {
