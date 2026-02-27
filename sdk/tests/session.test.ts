@@ -1,4 +1,4 @@
-import { SessionManager } from '../src/session';
+import { SessionManager, MaxSessionsError } from '../src/session';
 
 describe('SessionManager', () => {
   let manager: SessionManager;
@@ -62,5 +62,45 @@ describe('SessionManager', () => {
     const a = manager.createSession('https://test.com');
     const b = manager.createSession('https://test.com');
     expect(a.sessionToken).not.toBe(b.sessionToken);
+  });
+
+  it('enforces max_sessions per IP', () => {
+    manager = new SessionManager(3600, [], 2);
+    manager.createSession('https://test.com', '1.2.3.4');
+    manager.createSession('https://test.com', '1.2.3.4');
+    expect(() => manager.createSession('https://test.com', '1.2.3.4'))
+      .toThrow(MaxSessionsError);
+  });
+
+  it('allows sessions from different IPs independently', () => {
+    manager = new SessionManager(3600, [], 1);
+    manager.createSession('https://test.com', '1.2.3.4');
+    // Different IP should succeed
+    const b = manager.createSession('https://test.com', '5.6.7.8');
+    expect(b.sessionToken).toBeDefined();
+  });
+
+  it('frees max_sessions slot when session is ended', () => {
+    manager = new SessionManager(3600, [], 1);
+    const { sessionToken } = manager.createSession('https://test.com', '1.2.3.4');
+    manager.endSession(sessionToken);
+    // Slot freed — should succeed
+    const b = manager.createSession('https://test.com', '1.2.3.4');
+    expect(b.sessionToken).toBeDefined();
+  });
+
+  it('does not enforce max_sessions when set to 0', () => {
+    manager = new SessionManager(3600, [], 0);
+    for (let i = 0; i < 100; i++) {
+      manager.createSession('https://test.com', '1.2.3.4');
+    }
+    // Should not throw
+  });
+
+  it('does not enforce max_sessions when IP is not provided', () => {
+    manager = new SessionManager(3600, [], 1);
+    manager.createSession('https://test.com');
+    manager.createSession('https://test.com');
+    // Should not throw — no IP means no tracking
   });
 });

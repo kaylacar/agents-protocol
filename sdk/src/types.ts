@@ -41,6 +41,8 @@ export interface AgentDoorConfig {
   flows?: FlowDefinition[];
   rateLimit?: number;
   sessionTtl?: number;
+  /** Maximum concurrent sessions per agent (identified by IP). */
+  maxSessions?: number;
   audit?: boolean;
   basePath?: string;
   /** CORS Access-Control-Allow-Origin value. Defaults to '*'. Set to your site URL for stricter security. */
@@ -56,6 +58,7 @@ export interface SessionData {
   cartItems: CartItem[];
   expiresAt: Date;
   createdAt: Date;
+  ip?: string;
 }
 
 export interface AgentResponse<T = unknown> {
@@ -101,7 +104,7 @@ export interface AgentsJsonManifest {
     description: string;
     steps: string[];
   }>;
-  rate_limit?: { requests_per_minute: number };
+  rate_limit?: { requests_per_minute?: number; max_sessions?: number };
   audit?: {
     enabled: boolean;
     endpoint: string;

@@ -10,7 +10,7 @@ import {
 import { generateAgentsTxt } from './agents-txt';
 import { generateAgentsJson } from './agents-json';
 import { flattenCapabilities, capabilityRoute } from './utils';
-import { SessionManager } from './session';
+import { SessionManager, MaxSessionsError } from './session';
 import { RateLimiter } from './rate-limiter';
 
 // AuditManager depends on @rer/core and @rer/runtime which are optional peer
@@ -50,6 +50,8 @@ interface InternalResponse {
 }
 
 const AGENTS_REL = 'agents';
+/** Maximum request body size in bytes (1 MB). */
+const MAX_BODY_BYTES = 1024 * 1024;
 
 export class AgentDoor {
   private config: AgentDoorConfig;
@@ -93,7 +95,7 @@ export class AgentDoor {
     this.rateLimit = config.rateLimit ?? 60;
     this.corsOrigin = config.corsOrigin ?? '*';
     this.trustProxy = config.trustProxy ?? false;
-    this.sessionManager = new SessionManager(sessionTtl, this.capabilities);
+    this.sessionManager = new SessionManager(sessionTtl, this.capabilities, config.maxSessions ?? 0);
     this.rateLimiter = new RateLimiter();
     if (config.audit && AuditManagerClass) {
       this.auditManager = new AuditManagerClass(sessionTtl);
@@ -272,7 +274,18 @@ export class AgentDoor {
         });
       }
 
-      const agentReq = await webRequestToAgentRequest(request, this.trustProxy);
+      let agentReq: AgentRequest;
+      try {
+        agentReq = await webRequestToAgentRequest(request, this.trustProxy);
+      } catch (err) {
+        if (err instanceof BodyTooLargeError) {
+          return new globalThis.Response(JSON.stringify({ ok: false, error: 'Request body too large' }), {
+            status: 413,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(agentsJsonPath, origin) },
+          });
+        }
+        throw err;
+      }
       const result = await this.dispatch(agentReq);
 
       if (result === null) {
@@ -333,7 +346,15 @@ export class AgentDoor {
       handler: async (req) => {
         const rate = this.checkRate(req);
         if (!rate.allowed) return rateLimitResponse(rate.resetAt);
-        const result = this.sessionManager.createSession(this.config.site.url);
+        let result;
+        try {
+          result = this.sessionManager.createSession(this.config.site.url, req.ip);
+        } catch (err) {
+          if (err instanceof MaxSessionsError) {
+            return { status: 429, body: { ok: false, error: err.message } };
+          }
+          throw err;
+        }
         if (this.auditManager) {
           this.auditManager.startSession(result.sessionToken, this.config.site.url, result.capabilities);
         }
@@ -532,13 +553,16 @@ async function webRequestToAgentRequest(request: globalThis.Request, trustProxy:
 
   let body: Record<string, unknown> = {};
   const ct = request.headers.get('content-type') ?? '';
+  const contentLength = Number(request.headers.get('content-length') ?? '0');
+  if (contentLength > MAX_BODY_BYTES) {
+    throw new BodyTooLargeError();
+  }
   if (ct.includes('application/json') && request.body) {
-    try { body = await request.json() as Record<string, unknown>; } catch { /* empty body */ }
+    const text = await readBodyWithLimit(request);
+    try { body = JSON.parse(text) as Record<string, unknown>; } catch { /* malformed JSON — treat as empty body */ }
   } else if (ct.includes('application/x-www-form-urlencoded') && request.body) {
-    try {
-      const text = await request.text();
-      new URLSearchParams(text).forEach((v, k) => { body[k] = v; });
-    } catch { /* empty body */ }
+    const text = await readBodyWithLimit(request);
+    new URLSearchParams(text).forEach((v, k) => { body[k] = v; });
   }
 
   // Only trust X-Forwarded-For when trustProxy is enabled
@@ -571,6 +595,38 @@ function extractToken(req: AgentRequest): string | null {
   const legacy = req.headers['x-session-token'];
   if (legacy && legacy.trim().length > 0) return legacy.trim();
   return null;
+}
+
+class BodyTooLargeError extends Error {
+  constructor() { super('Request body too large'); this.name = 'BodyTooLargeError'; }
+}
+
+async function readBodyWithLimit(request: globalThis.Request): Promise<string> {
+  const reader = request.body?.getReader();
+  if (!reader) return '';
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    totalBytes += value.byteLength;
+    if (totalBytes > MAX_BODY_BYTES) {
+      reader.cancel();
+      throw new BodyTooLargeError();
+    }
+    chunks.push(value);
+  }
+  return new TextDecoder().decode(chunks.length === 1 ? chunks[0] : concatUint8Arrays(chunks, totalBytes));
+}
+
+function concatUint8Arrays(arrays: Uint8Array[], totalLength: number): Uint8Array {
+  const result = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const arr of arrays) {
+    result.set(arr, offset);
+    offset += arr.byteLength;
+  }
+  return result;
 }
 
 function matchRoute(pattern: string, path: string): { params: Record<string, string> } | null {

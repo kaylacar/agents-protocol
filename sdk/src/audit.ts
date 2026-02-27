@@ -24,7 +24,7 @@
  * session, or the same capability on different sessions, are fully independent.
  */
 
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { Runtime } from '@rer/runtime';
 import { generateEd25519KeyPair, ed25519Sign, canonicalize } from '@rer/core';
 import type {
@@ -77,12 +77,15 @@ export class AuditManager {
     const now = new Date();
     const expiresAt = new Date(now.getTime() + this.ttlSeconds * 1000);
 
+    // Hash the session token for the audit artifact (spec: SHOULD NOT store plaintext).
+    const hashedToken = createHash('sha256').update(sessionToken).digest('hex');
+
     const envelope: RuntimeEnvelope = {
       envelope_version: 'rer-envelope/0.1',
       run_id: runId,
       created_at: now.toISOString(),
       expires_at: expiresAt.toISOString(),
-      principal: { type: 'agent_session', id: sessionToken },
+      principal: { type: 'agent_session', id: hashedToken },
       permissions: {
         models: { allow: [], deny: [] },
         tools: { allow: capabilityNames, deny: [] },

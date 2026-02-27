@@ -160,6 +160,23 @@ describe('Integration: Fetch handler end-to-end', () => {
     expect(data.ok).toBe(false);
   });
 
+  it('returns 413 for oversized request body', async () => {
+    // Create a body larger than 1MB
+    const largeBody = JSON.stringify({ data: 'x'.repeat(1024 * 1024 + 1) });
+    const res = await handler(new Request(
+      'https://int-test.example/.well-known/agents/api/contact',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: largeBody,
+      },
+    ));
+    expect(res.status).toBe(413);
+    const data = await json(res);
+    expect(data.ok).toBe(false);
+    expect(data.error).toContain('too large');
+  });
+
   it('contact flow with valid data', async () => {
     const res = await handler(new Request(
       'https://int-test.example/.well-known/agents/api/contact',
@@ -172,5 +189,74 @@ describe('Integration: Fetch handler end-to-end', () => {
     const data = await json(res);
     expect(data.ok).toBe(true);
     expect(data.data.sent).toBe(true);
+  });
+});
+
+describe('Integration: max_sessions enforcement', () => {
+  it('returns 429 when max concurrent sessions exceeded', async () => {
+    const door = new AgentDoor({
+      site: { name: 'Max Session Test', url: 'https://max-test.example' },
+      capabilities: [
+        search({ handler: async (q) => [{ id: '1', name: `Result for ${q}` }] }),
+        cart(),
+      ],
+      rateLimit: 1000,
+      sessionTtl: 3600,
+      maxSessions: 1,
+      trustProxy: true,
+    });
+    const handler = door.handler();
+
+    async function json(res: Response): Promise<any> {
+      return res.json();
+    }
+
+    // First session should succeed
+    const res1 = await handler(new Request(
+      'https://max-test.example/.well-known/agents/api/session',
+      { method: 'POST', headers: { 'X-Forwarded-For': '10.0.0.1' } },
+    ));
+    expect(res1.status).toBe(201);
+
+    // Second session from same IP should be rejected
+    const res2 = await handler(new Request(
+      'https://max-test.example/.well-known/agents/api/session',
+      { method: 'POST', headers: { 'X-Forwarded-For': '10.0.0.1' } },
+    ));
+    expect(res2.status).toBe(429);
+    const data2 = await json(res2);
+    expect(data2.ok).toBe(false);
+    expect(data2.error).toContain('concurrent sessions');
+
+    // Delete first session, then third should succeed
+    const session1 = await json(res1);
+    const token = session1.data.session_token;
+    await handler(new Request(
+      'https://max-test.example/.well-known/agents/api/session',
+      { method: 'DELETE', headers: { 'X-Agent-Session': token } },
+    ));
+
+    const res3 = await handler(new Request(
+      'https://max-test.example/.well-known/agents/api/session',
+      { method: 'POST', headers: { 'X-Forwarded-For': '10.0.0.1' } },
+    ));
+    expect(res3.status).toBe(201);
+
+    door.destroy();
+  });
+
+  it('emits max_sessions in agents.json', async () => {
+    const door = new AgentDoor({
+      site: { name: 'Max Session Test', url: 'https://max-test.example' },
+      capabilities: [
+        search({ handler: async (q) => [{ id: '1', name: `Result for ${q}` }] }),
+      ],
+      maxSessions: 5,
+    });
+    const handler = door.handler();
+    const res = await handler(new Request('https://max-test.example/.well-known/agents.json'));
+    const body = await res.json() as any;
+    expect(body.rate_limit.max_sessions).toBe(5);
+    door.destroy();
   });
 });

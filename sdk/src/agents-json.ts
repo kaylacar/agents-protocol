@@ -35,7 +35,12 @@ export function generateAgentsJson(config: AgentDoorConfig, auditPublicKey?: str
         steps: f.steps,
       })),
     }),
-    ...(config.rateLimit && { rate_limit: { requests_per_minute: config.rateLimit } }),
+    ...((config.rateLimit || config.maxSessions) && {
+      rate_limit: {
+        ...(config.rateLimit && { requests_per_minute: config.rateLimit }),
+        ...(config.maxSessions && { max_sessions: config.maxSessions }),
+      },
+    }),
     ...(config.audit && {
       audit: {
         enabled: true,
