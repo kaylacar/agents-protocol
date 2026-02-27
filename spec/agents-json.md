@@ -21,7 +21,7 @@ The canonical JSON Schema is at [`schemas/agents.schema.json`](schemas/agents.sc
 
 ```json
 {
-  "protocol_version": "0.1.0",
+  "schema_version": "0.1.0",
   "site": { ... },
   "capabilities": [ ... ],
   "session": { ... },
@@ -33,7 +33,7 @@ The canonical JSON Schema is at [`schemas/agents.schema.json`](schemas/agents.sc
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `protocol_version` | string | Yes | Semver version of the protocol. |
+| `schema_version` | string | Yes | Semver version of the protocol. |
 | `site` | object | Yes | Site identity. |
 | `capabilities` | array | Yes | List of capability objects (at least one). |
 | `session` | object | No | Session configuration. Required if any capability uses sessions. |
@@ -108,15 +108,17 @@ For `GET` endpoints, parameters are sent as query string values. For `POST`/`PUT
 
 ```json
 {
-  "endpoint": "/.well-known/agents/api/session",
-  "ttl": 1800
+  "create": "/.well-known/agents/api/session",
+  "delete": "/.well-known/agents/api/session",
+  "ttl_seconds": 1800
 }
 ```
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `endpoint` | string | No | URL to create sessions. Default: `/.well-known/agents/api/session`. |
-| `ttl` | integer | No | Session time-to-live in seconds. Minimum: 60. Default: `1800`. |
+| `create` | string | Yes | URL path to create a session (POST). |
+| `delete` | string | No | URL path to end a session (DELETE). Defaults to the `create` URL. |
+| `ttl_seconds` | integer | No | Session time-to-live in seconds. Minimum: 60. Default: `1800`. |
 
 If any capability has `requires_session: true`, the `session` object SHOULD be present. If omitted, the defaults apply.
 
@@ -124,14 +126,14 @@ If any capability has `requires_session: true`, the `session` object SHOULD be p
 
 ```json
 {
-  "max_requests_per_minute": 60,
+  "requests_per_minute": 60,
   "max_sessions": 5
 }
 ```
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `max_requests_per_minute` | integer | No | Maximum requests per minute. |
+| `requests_per_minute` | integer | No | Maximum requests per minute. |
 | `max_sessions` | integer | No | Maximum concurrent sessions per agent. |
 
 ## `audit` Object
@@ -154,7 +156,7 @@ If any capability has `requires_session: true`, the `session` object SHOULD be p
 
 ```json
 {
-  "protocol_version": "0.1.0",
+  "schema_version": "0.1.0",
   "site": {
     "name": "Acme Ceramics",
     "url": "https://acmeceramics.example.com",
@@ -246,11 +248,12 @@ If any capability has `requires_session: true`, the `session` object SHOULD be p
     }
   ],
   "session": {
-    "endpoint": "/.well-known/agents/api/session",
-    "ttl": 3600
+    "create": "/.well-known/agents/api/session",
+    "delete": "/.well-known/agents/api/session",
+    "ttl_seconds": 1800
   },
   "rate_limit": {
-    "max_requests_per_minute": 60,
+    "requests_per_minute": 60,
     "max_sessions": 5
   },
   "audit": {
@@ -266,7 +269,7 @@ If any capability has `requires_session: true`, the `session` object SHOULD be p
 
 Implementations SHOULD validate `agents.json` against the [JSON Schema](schemas/agents.schema.json) before using it. At minimum, verify:
 
-1. `protocol_version` is present and is a valid semver string.
+1. `schema_version` is present and is a valid semver string.
 2. `site.name` and `site.url` are present.
 3. `capabilities` is a non-empty array.
 4. Each capability has `name`, `endpoint`, and `method`.

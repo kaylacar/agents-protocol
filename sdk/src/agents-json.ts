@@ -7,7 +7,7 @@ export function generateAgentsJson(config: AgentDoorConfig, auditPublicKey?: str
   const capabilities = flattenCapabilities(config);
 
   return {
-    schema_version: '1.0',
+    schema_version: '0.1.0',
     site: {
       name: config.site.name,
       url: config.site.url,
@@ -40,7 +40,6 @@ export function generateAgentsJson(config: AgentDoorConfig, auditPublicKey?: str
       audit: {
         enabled: true,
         endpoint: `${apiBase}/audit/:session_id`,
-        description: 'Retrieve signed RER artifact for a completed session',
         ...(auditPublicKey && { public_key: auditPublicKey }),
       },
     }),

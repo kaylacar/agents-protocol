@@ -41,7 +41,7 @@ describe('Integration: Fetch handler end-to-end', () => {
     const res = await handler(new Request('https://int-test.example/.well-known/agents.json'));
     expect(res.status).toBe(200);
     const body = await json(res);
-    expect(body.schema_version).toBe('1.0');
+    expect(body.schema_version).toBe('0.1.0');
     expect(body.site.name).toBe('Integration Test');
     expect(body.capabilities.length).toBeGreaterThan(0);
     expect(body.session.create).toBeDefined();

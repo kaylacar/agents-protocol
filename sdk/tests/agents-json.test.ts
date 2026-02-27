@@ -14,7 +14,7 @@ function makeConfig(overrides?: Partial<AgentDoorConfig>): AgentDoorConfig {
 describe('generateAgentsJson', () => {
   it('returns correct schema version', () => {
     const json = generateAgentsJson(makeConfig()) as any;
-    expect(json.schema_version).toBe('1.0');
+    expect(json.schema_version).toBe('0.1.0');
   });
 
   it('includes site metadata', () => {

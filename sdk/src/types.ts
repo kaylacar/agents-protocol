@@ -105,7 +105,6 @@ export interface AgentsJsonManifest {
   audit?: {
     enabled: boolean;
     endpoint: string;
-    description: string;
     public_key?: string;
   };
 }

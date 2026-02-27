@@ -11,7 +11,7 @@
       "type": "string",
       "description": "Version of the agents.txt protocol this file conforms to.",
       "pattern": "^\\d+\\.\\d+(\\.\\d+)?$",
-      "examples": ["1.0", "0.1.0"]
+      "examples": ["0.1.0", "1.0"]
     },
     "site": {
       "type": "object",
@@ -69,7 +69,7 @@
         "ttl_seconds": {
           "type": "integer",
           "description": "Session time-to-live in seconds.",
-          "default": 3600,
+          "default": 1800,
           "minimum": 60,
           "examples": [1800, 3600]
         }
@@ -113,6 +113,13 @@
           "type": "string",
           "description": "Base64-encoded Ed25519 public key used to sign audit artifacts. Allows offline verification."
         }
+      }
+    },
+    "flows": {
+      "type": "array",
+      "description": "Suggested step sequences for common agent tasks.",
+      "items": {
+        "$ref": "#/definitions/flow"
       }
     },
     "docs_url": {
@@ -165,6 +172,30 @@
           "type": "boolean",
           "description": "Whether this capability returns a URL for a human to complete the action.",
           "default": false
+        }
+      }
+    },
+    "flow": {
+      "type": "object",
+      "description": "A suggested step sequence for a common agent task.",
+      "required": ["name", "steps"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Flow identifier.",
+          "examples": ["purchase"]
+        },
+        "description": {
+          "type": "string",
+          "description": "What this flow accomplishes.",
+          "examples": ["Search, add to cart, and checkout"]
+        },
+        "steps": {
+          "type": "array",
+          "description": "Ordered list of capability names to invoke.",
+          "items": { "type": "string" },
+          "minItems": 1
         }
       }
     },

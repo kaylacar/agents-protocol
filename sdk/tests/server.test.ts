@@ -45,7 +45,7 @@ describe('AgentDoor', () => {
     const res = mockRes();
     await mw(req, res, jest.fn());
 
-    expect(res._body.schema_version).toBe('1.0');
+    expect(res._body.schema_version).toBe('0.1.0');
     expect(res._body.site.name).toBe('Test');
     expect(res._body.capabilities.length).toBeGreaterThan(0);
   });

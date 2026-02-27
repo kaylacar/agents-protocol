@@ -5,7 +5,7 @@ export const BASE = `${SITE_URL}/.well-known`;
 export const API = `${BASE}/agents/api`;
 
 export const MANIFEST: AgentsManifest = {
-  schema_version: '1.0',
+  schema_version: '0.1.0',
   site: { name: 'Test Store', url: SITE_URL, description: 'A test store' },
   capabilities: [
     { name: 'search', description: 'Search items', method: 'GET', endpoint: `${API}/search`, params: { q: { type: 'string', required: true } } },
