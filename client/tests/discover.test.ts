@@ -13,8 +13,8 @@ describe('discover', () => {
   it('returns the full manifest structure', async () => {
     const fetchImpl = mockFetch({ 'agents.json': () => MANIFEST });
     const manifest = await discover(SITE_URL, fetchImpl);
-    expect(manifest.schema_version).toBe('1.0');
-    expect(manifest.session.create).toContain('/session');
+    expect(manifest.protocol_version).toBe('0.1.0');
+    expect(manifest.session.endpoint).toContain('/session');
     expect(manifest.audit?.enabled).toBe(true);
   });
 
@@ -24,7 +24,7 @@ describe('discover', () => {
   });
 
   it('throws when agents.json is missing required fields', async () => {
-    const fetchImpl = mockFetch({ 'agents.json': () => ({ schema_version: '1.0' }) });
+    const fetchImpl = mockFetch({ 'agents.json': () => ({ protocol_version: '0.1.0' }) });
     await expect(discover(SITE_URL, fetchImpl)).rejects.toThrow(AgentClientError);
   });
 

@@ -189,37 +189,43 @@ export class AgentDoor {
 
   middleware(): (req: Request, res: Response, next: NextFunction) => void {
     return async (req: Request, res: Response, next: NextFunction) => {
-      // Auto-discovery + CORS on every response
-      res.setHeader('Link', `<${this.agentsJsonPath}>; rel="${AGENTS_REL}"`);
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Session-Token');
+      try {
+        // Auto-discovery + CORS on every response
+        res.setHeader('Link', `<${this.agentsJsonPath}>; rel="${AGENTS_REL}"`);
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Session-Token');
 
-      if (req.method === 'OPTIONS') {
-        res.status(204).end();
-        return;
-      }
-
-      const agentReq = expressToAgentRequest(req);
-      const result = await this.dispatch(agentReq);
-
-      if (result === null) {
-        // Not our route — intercept send() to inject <link> into HTML pages
-        this.injectHtmlLink(res);
-        next();
-        return;
-      }
-
-      res.status(result.status);
-      if (result.headers) {
-        for (const [k, v] of Object.entries(result.headers)) {
-          res.setHeader(k, v);
+        if (req.method === 'OPTIONS') {
+          res.status(204).end();
+          return;
         }
-      }
-      if (result.contentType) {
-        res.type(result.contentType).send(result.body as string);
-      } else {
-        res.json(result.body);
+
+        const agentReq = expressToAgentRequest(req);
+        const result = await this.dispatch(agentReq);
+
+        if (result === null) {
+          // Not our route — intercept send() to inject <link> into HTML pages
+          this.injectHtmlLink(res);
+          next();
+          return;
+        }
+
+        res.status(result.status);
+        if (result.headers) {
+          for (const [k, v] of Object.entries(result.headers)) {
+            res.setHeader(k, v);
+          }
+        }
+        if (result.contentType) {
+          res.type(result.contentType).send(result.body as string);
+        } else {
+          res.json(result.body);
+        }
+      } catch (err) {
+        if (!res.headersSent) {
+          res.status(500).json({ ok: false, error: 'Internal server error' });
+        }
       }
     };
   }
@@ -304,7 +310,7 @@ export class AgentDoor {
           this.auditManager.startSession(result.sessionToken, this.config.site.url, result.capabilities);
         }
         return {
-          status: 200,
+          status: 201,
           body: {
             ok: true,
             data: {

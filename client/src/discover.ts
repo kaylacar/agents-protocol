@@ -28,7 +28,7 @@ export async function discover(
 
       const json = await res.json() as AgentsManifest;
 
-      if (!json.schema_version || !json.site || !Array.isArray(json.capabilities)) {
+      if (!json.protocol_version || !json.site || !Array.isArray(json.capabilities)) {
         throw new AgentClientError(
           `Invalid agents.json at ${url}: missing required fields`,
         );

@@ -6,13 +6,14 @@ function flattenCapabilities(config: AgentDoorConfig): CapabilityDefinition[] {
 
 export function generateAgentsTxt(config: AgentDoorConfig): string {
   const basePath = config.basePath ?? '/.well-known';
+  const siteUrl = config.site.url.replace(/\/$/, '');
   const capabilities = flattenCapabilities(config);
 
   const lines: string[] = [
     `# agents.txt - ${config.site.name}`,
     `# ${config.site.url}`,
     '',
-    `Site: ${config.site.name}`,
+    `Name: ${config.site.name}`,
     `URL: ${config.site.url}`,
   ];
 
@@ -20,13 +21,8 @@ export function generateAgentsTxt(config: AgentDoorConfig): string {
   if (config.site.contact) lines.push(`Contact: ${config.site.contact}`);
 
   lines.push('');
-  lines.push(`Agents-JSON: ${config.site.url}${basePath}/agents.json`);
-  lines.push('');
-  lines.push('# Capabilities');
-
-  for (const cap of capabilities) {
-    lines.push(`Allow: ${cap.name}`);
-  }
+  lines.push(`Capabilities: ${capabilities.map(c => c.name).join(', ')}`);
+  lines.push(`Capabilities-URL: ${siteUrl}${basePath}/agents.json`);
 
   if (config.flows && config.flows.length > 0) {
     lines.push('');
@@ -38,11 +34,11 @@ export function generateAgentsTxt(config: AgentDoorConfig): string {
   }
 
   if (config.rateLimit) lines.push('');
-  if (config.rateLimit) lines.push(`Rate-Limit: ${config.rateLimit}/minute`);
-  if (config.sessionTtl) lines.push(`Session-TTL: ${config.sessionTtl}s`);
+  if (config.rateLimit) lines.push(`Rate-Limit: ${config.rateLimit}`);
+  if (config.sessionTtl) lines.push(`Session-TTL: ${config.sessionTtl}`);
   if (config.audit) {
     lines.push(`Audit: true`);
-    lines.push(`Audit-Endpoint: ${config.site.url}${basePath}/agents/api/audit/:session_id`);
+    lines.push(`Audit-Endpoint: ${siteUrl}${basePath}/agents/api/audit/:session_id`);
   }
 
   lines.push('');

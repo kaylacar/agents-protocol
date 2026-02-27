@@ -31,9 +31,8 @@ export interface AgentsFlow {
 }
 
 export interface AgentsSessionConfig {
-  create: string;
-  delete?: string;
-  ttl_seconds?: number;
+  endpoint: string;
+  ttl?: number;
 }
 
 export interface AgentsAuditConfig {
@@ -43,12 +42,12 @@ export interface AgentsAuditConfig {
 }
 
 export interface AgentsManifest {
-  schema_version: string;
+  protocol_version: string;
   site: AgentsSiteInfo;
   capabilities: AgentsCapability[];
   flows?: AgentsFlow[];
   session: AgentsSessionConfig;
-  rate_limit?: { requests_per_minute: number };
+  rate_limit?: { max_requests_per_minute: number };
   audit?: AgentsAuditConfig;
 }
 

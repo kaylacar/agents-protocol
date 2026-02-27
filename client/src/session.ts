@@ -5,7 +5,7 @@ export async function createSession(
   manifest: AgentsManifest,
   fetchImpl: typeof fetch = fetch,
 ): Promise<AgentSession> {
-  const endpoint = manifest.session.create;
+  const endpoint = manifest.session.endpoint;
 
   const res = await request<AgentSession>(endpoint, {
     method: 'POST',

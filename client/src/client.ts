@@ -54,7 +54,7 @@ export class AgentClient {
   async disconnect(): Promise<void> {
     if (!this.session) return;
     const manifest = await this.getManifest();
-    await endSession(manifest.session.create, this.session.session_token, this.fetchImpl);
+    await endSession(manifest.session.endpoint, this.session.session_token, this.fetchImpl);
     this.session = null;
   }
 
@@ -137,7 +137,7 @@ export class AgentClient {
     await this.requireSession();
     const cap = await this.requireCapability('cart.update');
     const res = await request<{ item_id: string; quantity: number }>(cap.endpoint, {
-      method: 'PUT',
+      method: 'PATCH',
       body: { item_id: itemId, quantity },
       ...this.baseOpts(),
     });

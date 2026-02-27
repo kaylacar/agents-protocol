@@ -5,7 +5,7 @@ export const BASE = `${SITE_URL}/.well-known`;
 export const API = `${BASE}/agents/api`;
 
 export const MANIFEST: AgentsManifest = {
-  schema_version: '1.0',
+  protocol_version: '0.1.0',
   site: { name: 'Test Store', url: SITE_URL, description: 'A test store' },
   capabilities: [
     { name: 'search', description: 'Search items', method: 'GET', endpoint: `${API}/search`, params: { q: { type: 'string', required: true } } },
@@ -13,7 +13,7 @@ export const MANIFEST: AgentsManifest = {
     { name: 'detail', description: 'Item detail', method: 'GET', endpoint: `${API}/detail/:id` },
     { name: 'cart.add', description: 'Add to cart', method: 'POST', endpoint: `${API}/cart/add`, requires_session: true },
     { name: 'cart.view', description: 'View cart', method: 'GET', endpoint: `${API}/cart/view`, requires_session: true },
-    { name: 'cart.update', description: 'Update cart', method: 'PUT', endpoint: `${API}/cart/update`, requires_session: true },
+    { name: 'cart.update', description: 'Update cart', method: 'PATCH', endpoint: `${API}/cart/update`, requires_session: true },
     { name: 'cart.remove', description: 'Remove from cart', method: 'DELETE', endpoint: `${API}/cart/remove`, requires_session: true },
     { name: 'checkout', description: 'Checkout', method: 'POST', endpoint: `${API}/checkout`, requires_session: true, human_handoff: true },
     { name: 'contact', description: 'Contact', method: 'POST', endpoint: `${API}/contact` },
@@ -21,8 +21,8 @@ export const MANIFEST: AgentsManifest = {
   flows: [
     { name: 'purchase', description: 'Find and buy a product', steps: ['search', 'detail', 'cart.add', 'checkout'] },
   ],
-  session: { create: `${API}/session`, delete: `${API}/session`, ttl_seconds: 3600 },
-  rate_limit: { requests_per_minute: 60 },
+  session: { endpoint: `${API}/session`, ttl: 3600 },
+  rate_limit: { max_requests_per_minute: 60 },
   audit: { enabled: true, endpoint: `${API}/audit/:session_id` },
 };
 

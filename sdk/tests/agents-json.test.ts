@@ -12,9 +12,9 @@ function makeConfig(overrides?: Partial<AgentDoorConfig>): AgentDoorConfig {
 }
 
 describe('generateAgentsJson', () => {
-  it('returns correct schema version', () => {
+  it('returns correct protocol version', () => {
     const json = generateAgentsJson(makeConfig()) as any;
-    expect(json.schema_version).toBe('1.0');
+    expect(json.protocol_version).toBe('0.1.0');
   });
 
   it('includes site metadata', () => {
@@ -24,11 +24,11 @@ describe('generateAgentsJson', () => {
     expect(json.site.description).toBe('A test store');
   });
 
-  it('maps capabilities to endpoints', () => {
+  it('maps capabilities to absolute endpoint URLs', () => {
     const json = generateAgentsJson(makeConfig()) as any;
     expect(json.capabilities).toHaveLength(1);
     expect(json.capabilities[0].name).toBe('search');
-    expect(json.capabilities[0].endpoint).toBe('/.well-known/agents/api/search');
+    expect(json.capabilities[0].endpoint).toBe('https://test.com/.well-known/agents/api/search');
     expect(json.capabilities[0].method).toBe('GET');
   });
 
@@ -38,8 +38,8 @@ describe('generateAgentsJson', () => {
       { name: 'cart.view', description: 'View cart', method: 'GET', requiresSession: true, handler: async () => {} },
     ];
     const json = generateAgentsJson(makeConfig({ capabilities: caps })) as any;
-    expect(json.capabilities[0].endpoint).toBe('/.well-known/agents/api/cart/add');
-    expect(json.capabilities[1].endpoint).toBe('/.well-known/agents/api/cart/view');
+    expect(json.capabilities[0].endpoint).toBe('https://test.com/.well-known/agents/api/cart/add');
+    expect(json.capabilities[1].endpoint).toBe('https://test.com/.well-known/agents/api/cart/view');
   });
 
   it('marks session-required capabilities', () => {
@@ -58,14 +58,19 @@ describe('generateAgentsJson', () => {
     expect(json.capabilities[0].human_handoff).toBe(true);
   });
 
-  it('includes session endpoint', () => {
+  it('includes session endpoint as absolute URL', () => {
     const json = generateAgentsJson(makeConfig()) as any;
-    expect(json.session.create).toBe('/.well-known/agents/api/session');
+    expect(json.session.endpoint).toBe('https://test.com/.well-known/agents/api/session');
+  });
+
+  it('includes session ttl when configured', () => {
+    const json = generateAgentsJson(makeConfig({ sessionTtl: 1800 })) as any;
+    expect(json.session.ttl).toBe(1800);
   });
 
   it('includes rate limit when configured', () => {
     const json = generateAgentsJson(makeConfig({ rateLimit: 100 })) as any;
-    expect(json.rate_limit.requests_per_minute).toBe(100);
+    expect(json.rate_limit.max_requests_per_minute).toBe(100);
   });
 
   it('omits rate_limit when not configured', () => {
@@ -78,7 +83,7 @@ describe('generateAgentsJson', () => {
       { name: 'detail', description: 'Get detail', method: 'GET', params: { id: { type: 'string', required: true } }, handler: async () => {} },
     ];
     const json = generateAgentsJson(makeConfig({ capabilities: caps })) as any;
-    expect(json.capabilities[0].endpoint).toBe('/.well-known/agents/api/detail/:id');
+    expect(json.capabilities[0].endpoint).toBe('https://test.com/.well-known/agents/api/detail/:id');
   });
 
   it('includes flows when configured', () => {
@@ -102,10 +107,5 @@ describe('generateAgentsJson', () => {
   it('omits flows when array is empty', () => {
     const json = generateAgentsJson(makeConfig({ flows: [] })) as any;
     expect(json.flows).toBeUndefined();
-  });
-
-  it('includes delete endpoint in session config', () => {
-    const json = generateAgentsJson(makeConfig()) as any;
-    expect(json.session.delete).toBe('/.well-known/agents/api/session');
   });
 });

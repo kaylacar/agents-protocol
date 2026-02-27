@@ -4,8 +4,8 @@ function flattenCapabilities(config: AgentDoorConfig): CapabilityDefinition[] {
   return config.capabilities.flat();
 }
 
-function capabilityToEndpoint(cap: CapabilityDefinition, basePath: string): string {
-  const base = `${basePath}/agents/api`;
+function capabilityToEndpoint(cap: CapabilityDefinition, basePath: string, siteUrl: string): string {
+  const base = `${siteUrl}${basePath}/agents/api`;
   const parts = cap.name.split('.');
   if (cap.name === 'detail') return `${base}/detail/:id`;
   if (parts.length > 1) return `${base}/${parts.join('/')}`;
@@ -14,10 +14,12 @@ function capabilityToEndpoint(cap: CapabilityDefinition, basePath: string): stri
 
 export function generateAgentsJson(config: AgentDoorConfig): object {
   const basePath = config.basePath ?? '/.well-known';
+  const siteUrl = config.site.url.replace(/\/$/, '');
   const capabilities = flattenCapabilities(config);
+  const sessionEndpoint = `${siteUrl}${basePath}/agents/api/session`;
 
   return {
-    schema_version: '1.0',
+    protocol_version: '0.1.0',
     site: {
       name: config.site.name,
       url: config.site.url,
@@ -28,15 +30,14 @@ export function generateAgentsJson(config: AgentDoorConfig): object {
       name: cap.name,
       description: cap.description,
       method: cap.method,
-      endpoint: capabilityToEndpoint(cap, basePath),
+      endpoint: capabilityToEndpoint(cap, basePath, siteUrl),
       ...(cap.params && { params: cap.params }),
       ...(cap.requiresSession && { requires_session: true }),
       ...(cap.humanHandoff && { human_handoff: true }),
     })),
     session: {
-      create: `${basePath}/agents/api/session`,
-      delete: `${basePath}/agents/api/session`,
-      ...(config.sessionTtl && { ttl_seconds: config.sessionTtl }),
+      endpoint: sessionEndpoint,
+      ...(config.sessionTtl && { ttl: config.sessionTtl }),
     },
     ...(config.flows && config.flows.length > 0 && {
       flows: config.flows.map(f => ({
@@ -45,11 +46,11 @@ export function generateAgentsJson(config: AgentDoorConfig): object {
         steps: f.steps,
       })),
     }),
-    ...(config.rateLimit && { rate_limit: { requests_per_minute: config.rateLimit } }),
+    ...(config.rateLimit && { rate_limit: { max_requests_per_minute: config.rateLimit } }),
     ...(config.audit && {
       audit: {
         enabled: true,
-        endpoint: `${basePath}/agents/api/audit/:session_id`,
+        endpoint: `${siteUrl}${basePath}/agents/api/audit/:session_id`,
         description: 'Retrieve signed RER artifact for a completed session',
       },
     }),

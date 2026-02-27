@@ -17,6 +17,7 @@ export function search({ handler }: SearchOptions): CapabilityDefinition {
       const q = req.query.q;
       if (!q) throw new Error('Missing required parameter: q');
       const limit = req.query.limit ? parseInt(req.query.limit, 10) : undefined;
+      if (limit !== undefined && isNaN(limit)) throw new Error('limit must be a number');
       return handler(q, { limit });
     },
   };
