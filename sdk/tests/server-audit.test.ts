@@ -1,6 +1,11 @@
 import { AgentDoor } from '../src/server';
 import { search, cart, checkout } from '../src/capabilities';
 
+let rerAvailable = false;
+try { require('@rer/core'); rerAvailable = true; } catch {}
+
+const describeIfRer = rerAvailable ? describe : describe.skip;
+
 function mockReq(method: string, path: string, opts?: { body?: any; query?: Record<string, string>; headers?: Record<string, string>; ip?: string }): any {
   return {
     method,
@@ -31,7 +36,7 @@ function mockRes(): any {
   return res;
 }
 
-describe('AgentDoor with audit: true', () => {
+describeIfRer('AgentDoor with audit: true', () => {
   let door: AgentDoor;
 
   afterEach(() => {

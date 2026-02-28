@@ -1,6 +1,11 @@
 import { AuditManager } from '../src/audit';
 
-describe('AuditManager', () => {
+let rerAvailable = false;
+try { require('@rer/core'); rerAvailable = true; } catch {}
+
+const describeIfRer = rerAvailable ? describe : describe.skip;
+
+describeIfRer('AuditManager', () => {
   let audit: AuditManager;
 
   afterEach(() => {

@@ -11,7 +11,6 @@ import { generateAgentsJson } from './agents-json';
 import { SessionManager } from './session';
 import { RateLimiter } from './rate-limiter';
 import { AuditManager } from './audit';
-import { PolicyDeniedError } from '@rer/core';
 
 interface RouteEntry {
   method: string;
@@ -350,7 +349,7 @@ export class AgentDoor {
             return { status: 200, body: { ok: true, data } };
           } catch (err: unknown) {
             const message = err instanceof Error ? err.message : 'Unknown error';
-            const status = err instanceof PolicyDeniedError ? 403 : 400;
+            const status = err instanceof Error && err.constructor.name === 'PolicyDeniedError' ? 403 : 400;
             return { status, body: { ok: false, error: message } };
           }
         },

@@ -25,22 +25,42 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import { Runtime } from '@rer/runtime';
-import { generateEd25519KeyPair, ed25519Sign, canonicalize } from '@rer/core';
-import type {
-  Ed25519KeyPair,
-  RuntimeEnvelope,
-  RuntimeRunArtifact,
-  ToolExecutor,
-  ToolRequest,
-  ToolResponse,
-} from '@rer/core';
+
+// @rer packages are optional — audit features are only available when installed.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let Runtime: any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let generateEd25519KeyPair: any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let ed25519Sign: any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let canonicalize: any;
+
+let rerAvailable = false;
+try {
+  Runtime = require('@rer/runtime').Runtime;
+  const core = require('@rer/core');
+  generateEd25519KeyPair = core.generateEd25519KeyPair;
+  ed25519Sign = core.ed25519Sign;
+  canonicalize = core.canonicalize;
+  rerAvailable = true;
+} catch {
+  // @rer packages not installed — AuditManager will throw on construction.
+}
+
+/** Local type stubs so the file compiles without @rer/core installed. */
+interface Ed25519KeyPair { publicKey: Buffer; privateKey: Buffer; }
+interface RuntimeEnvelope { [key: string]: unknown; envelope_signature: string; }
+interface RuntimeRunArtifact { run_id: string; envelope: unknown; events: any[]; runtime_signature: string; [key: string]: unknown; }
+interface ToolExecutor { (req: ToolRequest): Promise<ToolResponse>; }
+interface ToolRequest { tool: string; input: unknown; }
+interface ToolResponse { tool: string; output: { data: unknown }; }
 
 /** Byte offset where the raw 32-byte key begins inside a DER SPKI Ed25519 public key. */
 const SPKI_PREFIX_BYTES = 12;
 
 interface SessionEntry {
-  runtime: Runtime;
+  runtime: InstanceType<typeof Runtime>;
   expiresAt: number; // ms since epoch
 }
 
@@ -58,6 +78,12 @@ export class AuditManager {
   private cleanupTimer: ReturnType<typeof setInterval>;
 
   constructor(ttlSeconds: number = 3600) {
+    if (!rerAvailable) {
+      throw new Error(
+        'AuditManager requires @rer/core and @rer/runtime. ' +
+        'Install them to enable audit trails, or set audit: false.',
+      );
+    }
     this.keyPair = generateEd25519KeyPair();
     this.ttlSeconds = ttlSeconds;
 
