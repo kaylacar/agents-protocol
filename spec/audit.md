@@ -7,19 +7,29 @@
 
 The audit trail gives agents, users, and site operators a cryptographic proof of what happened during a session. It answers three questions:
 
-1. **What did the agent do?** -- Every capability call is logged.
-2. **What policies were enforced?** -- Every policy check is recorded.
-3. **Was anything tampered with?** -- The log is hash-chained and signed.
+1. **What did the agent do?** — Every capability call is logged as a pair of events (`ToolCalled` + `ToolReturned`).
+2. **What policies were enforced?** — The RER envelope records which capabilities were permitted.
+3. **Was anything tampered with?** — The event log is hash-chained and the artifact is signed with Ed25519.
 
 The audit system is powered by [RER (Runtime Enforcement and Recording)](https://github.com/kaylacar/rer). Sites that set `audit.enabled: true` in `agents.json` produce a signed artifact for every session.
 
+## For AI Agents
+
+If you are an AI agent, here is what audit means for you:
+
+1. **Check `agents.json`:** If `audit.enabled` is `true`, your actions are being cryptographically logged.
+2. **No extra work required.** Audit is transparent — you use the same API, same headers, same requests. The logging happens server-side.
+3. **After ending a session**, you can retrieve the signed artifact at the `audit.endpoint` URL (replace `:session_id` with your session token).
+4. **The artifact is self-contained.** It includes the full event chain, envelope, and signature. You or your operator can verify it offline.
+5. **If audit is disabled**, the audit endpoint returns `404`. Sessions still work normally.
+
 ## What RER Provides
 
-RER is a lightweight runtime that provides three things the agents.txt protocol relies on:
+RER is a lightweight runtime that provides three things the agents protocol relies on:
 
-- **Hash-chained event log.** Each event includes a SHA-256 hash of the previous event, forming an append-only chain. If any event is modified or removed after the fact, the chain breaks and verification fails.
-- **Ed25519 signatures.** When a session ends, the complete event chain is signed with the site's Ed25519 private key. Anyone with the site's public key (published in `agents.json`) can verify the artifact offline.
-- **Policy enforcement.** RER evaluates policy rules before each capability call. Policies can restrict which capabilities are available, enforce parameter constraints, or require human handoff. Policy decisions are recorded in the event log alongside the capability calls.
+- **Hash-chained event log.** Each event includes a hash of the previous event, forming an append-only chain. If any event is modified or removed after the fact, the chain breaks and verification fails.
+- **Ed25519 signatures.** When a session ends, the complete event chain is signed with the site's Ed25519 private key. Anyone with the site's public key can verify the artifact offline.
+- **Policy enforcement.** RER evaluates policy rules before each capability call. The permitted capabilities are recorded in the envelope. Policy decisions are enforced in-process and cryptographically sealed.
 
 ## How It Works
 
@@ -28,18 +38,40 @@ RER is a lightweight runtime that provides three things the agents.txt protocol 
 When a session is created (see [Sessions](session.md)), the site creates a corresponding RER envelope. The envelope is scoped to the capabilities declared in `agents.json`.
 
 ```
-Session created: tok_a1b2c3d4e5f6
+Session created: a1b2c3d4-e5f6-7890-abcd-ef1234567890
   -> RER envelope created
-  -> Capabilities loaded as policy rules
+  -> Capabilities loaded as permitted tools
   -> Runtime initialized
 ```
 
 The envelope records:
-- Session token (hashed, not plaintext)
-- Session start time
-- Agent identity (if provided)
-- Declared purpose (if provided)
-- Available capabilities
+
+```json
+{
+  "envelope_version": "rer-envelope/0.1",
+  "run_id": "unique-run-uuid",
+  "created_at": "2026-02-19T13:00:00.000Z",
+  "expires_at": "2026-02-19T14:00:00.000Z",
+  "principal": {
+    "type": "agent_session",
+    "id": "session-token-value"
+  },
+  "permissions": {
+    "models": { "allow": [], "deny": [] },
+    "tools": {
+      "allow": ["search", "browse", "detail", "cart.add", "cart.view", "cart.update", "cart.remove", "checkout"],
+      "deny": []
+    },
+    "spend_caps": { "max_usd": null },
+    "rate_limits": { "max_model_calls": null, "max_tool_calls": null },
+    "human_approval": { "required_for_tools": [] }
+  },
+  "context": {
+    "site": "https://acmeceramics.example.com"
+  },
+  "envelope_signature": "base64-ed25519-signature..."
+}
+```
 
 ### 2. Every Capability Call Goes Through the RER Runtime
 
@@ -47,35 +79,22 @@ When an agent calls a capability, the request passes through the RER runtime bef
 
 ```
 Agent Request
-  -> RER Policy Check (is this capability allowed? are params valid?)
+  -> RER Policy Check (is this capability in the permitted tools list?)
+  -> ToolCalled event logged (capability name + input params)
   -> Site Handler (business logic)
-  -> RER Event Log (record what happened)
+  -> ToolReturned event logged (capability name + output data)
   -> Response to Agent
 ```
 
-Each event in the log contains:
-
-| Field | Description |
-|---|---|
-| `event_id` | Unique event identifier. |
-| `timestamp` | ISO 8601 timestamp. |
-| `capability` | The capability name (e.g., `cart.add`). |
-| `method` | HTTP method. |
-| `params` | Request parameters (sensitive values redacted). |
-| `policy_result` | `allow` or `deny`, with the rule that matched. |
-| `response_status` | HTTP status code returned. |
-| `prev_hash` | SHA-256 hash of the previous event (empty for the first event). |
+Events are logged as `ToolCalled` and `ToolReturned` pairs. Each event includes the capability name (`tool`), the input/output data, and a hash link to the previous event in the chain.
 
 ### 3. Session End Produces a Signed Artifact
 
 When the session ends (expiry, explicit `DELETE`, or checkout completion), the RER runtime:
 
 1. Finalizes the event chain.
-2. Computes a root hash over all events.
-3. Signs the root hash with the site's Ed25519 private key.
-4. Stores the signed artifact.
-
-The artifact contains the full event chain plus the signature. It is self-contained and can be verified without contacting the site.
+2. Signs the artifact with the site's Ed25519 private key.
+3. Stores the signed artifact for retrieval.
 
 ## Retrieving an Audit Artifact
 
@@ -94,50 +113,73 @@ Content-Type: application/json
 {
   "ok": true,
   "data": {
-    "session_id": "tok_a1b2c3d4e5f6",
-    "site": "https://acmeceramics.example.com",
-    "created_at": "2026-02-19T13:00:00Z",
-    "ended_at": "2026-02-19T13:15:00Z",
-    "agent": {
-      "name": "MyShoppingAgent",
-      "version": "1.0.0",
-      "purpose": "Find and purchase a birthday gift"
+    "run_id": "unique-run-uuid",
+    "envelope": {
+      "envelope_version": "rer-envelope/0.1",
+      "run_id": "unique-run-uuid",
+      "created_at": "2026-02-19T13:00:00.000Z",
+      "expires_at": "2026-02-19T14:00:00.000Z",
+      "principal": {
+        "type": "agent_session",
+        "id": "session-token-value"
+      },
+      "permissions": {
+        "tools": {
+          "allow": ["search", "cart.add", "cart.view", "checkout"],
+          "deny": []
+        }
+      },
+      "context": { "site": "https://acmeceramics.example.com" },
+      "envelope_signature": "base64..."
     },
     "events": [
       {
-        "event_id": "evt_001",
-        "timestamp": "2026-02-19T13:01:12Z",
-        "capability": "search",
-        "method": "GET",
-        "params": { "q": "blue mugs" },
-        "policy_result": "allow",
-        "response_status": 200,
-        "prev_hash": ""
+        "header": {
+          "event_type": "ToolCalled",
+          "event_hash": "sha256-hash...",
+          "parent_event_hash": ""
+        },
+        "payload": {
+          "tool": "search",
+          "input": { "q": "blue mugs" }
+        }
       },
       {
-        "event_id": "evt_002",
-        "timestamp": "2026-02-19T13:02:45Z",
-        "capability": "cart.add",
-        "method": "POST",
-        "params": { "item_id": "prod_9f8e7d", "quantity": 2 },
-        "policy_result": "allow",
-        "response_status": 201,
-        "prev_hash": "a3f2b8c1d4e5..."
+        "header": {
+          "event_type": "ToolReturned",
+          "event_hash": "sha256-hash...",
+          "parent_event_hash": "sha256-hash-of-previous..."
+        },
+        "payload": {
+          "tool": "search",
+          "output": { "data": "..." }
+        }
       },
       {
-        "event_id": "evt_003",
-        "timestamp": "2026-02-19T13:05:30Z",
-        "capability": "checkout",
-        "method": "POST",
-        "params": {},
-        "policy_result": "allow",
-        "response_status": 200,
-        "prev_hash": "b7e1c9d3f2a6..."
+        "header": {
+          "event_type": "ToolCalled",
+          "event_hash": "sha256-hash...",
+          "parent_event_hash": "sha256-hash-of-previous..."
+        },
+        "payload": {
+          "tool": "cart.add",
+          "input": { "item_id": "prod_9f8e7d", "quantity": 2 }
+        }
+      },
+      {
+        "header": {
+          "event_type": "ToolReturned",
+          "event_hash": "sha256-hash...",
+          "parent_event_hash": "sha256-hash-of-previous..."
+        },
+        "payload": {
+          "tool": "cart.add",
+          "output": { "data": { "item_id": "prod_9f8e7d", "quantity": 2, "cart_size": 1 } }
+        }
       }
     ],
-    "root_hash": "c4d8e2f1a5b9...",
-    "signature": "MEUCIQD...",
-    "public_key": "MCowBQYDK2VwAyEA..."
+    "runtime_signature": "base64-ed25519-signature...",
+    "envelope_signature": "base64-ed25519-signature..."
   }
 }
 ```
@@ -153,51 +195,22 @@ Content-Type: application/json
 
 Anyone can verify an audit artifact without contacting the site:
 
-1. **Get the public key.** It is in the artifact itself and in `agents.json` at `audit.public_key`. For strong verification, compare both sources.
-2. **Verify the hash chain.** Recompute the SHA-256 hash of each event and confirm it matches the `prev_hash` of the next event.
-3. **Verify the root hash.** Hash all events together and confirm the result matches `root_hash`.
-4. **Verify the signature.** Use the Ed25519 public key to verify that `signature` is a valid signature of `root_hash`.
+1. **Verify the hash chain.** Walk through the `events` array. Each event's `header.parent_event_hash` should match the `header.event_hash` of the previous event. The first event should have an empty `parent_event_hash`.
+2. **Verify the envelope signature.** Use the site's Ed25519 public key (from `agents.json` at `audit.public_key` or from the artifact's envelope) to verify `envelope_signature` against the canonical envelope contents.
+3. **Verify the runtime signature.** Verify `runtime_signature` against the complete event chain using the same public key.
 
 If all checks pass, the artifact is authentic and untampered.
 
-### Pseudocode
-
-```python
-import hashlib
-from ed25519 import verify
-
-def verify_artifact(artifact):
-    events = artifact["events"]
-
-    # 1. Verify hash chain
-    for i, event in enumerate(events):
-        if i == 0:
-            assert event["prev_hash"] == ""
-        else:
-            expected = sha256(serialize(events[i - 1]))
-            assert event["prev_hash"] == expected
-
-    # 2. Verify root hash
-    chain = "".join(sha256(serialize(e)) for e in events)
-    assert sha256(chain) == artifact["root_hash"]
-
-    # 3. Verify signature
-    verify(artifact["public_key"], artifact["root_hash"], artifact["signature"])
-
-    return True
-```
-
 ## Artifact Retention
 
-Sites SHOULD retain audit artifacts for at least 30 days after session end. Sites MAY retain them longer. The retention period SHOULD be documented in the site's agent documentation.
+Sites SHOULD retain audit artifacts for at least one session TTL window after the session ends. The SDK retains artifacts for one additional TTL window after session expiry, then evicts them. Sites MAY retain them longer.
 
 After the retention period, the artifact endpoint returns `404`. However, any party that downloaded the artifact can still verify it offline using the public key.
 
 ## Privacy
 
 - Sites MUST NOT include sensitive user data (passwords, payment details, full addresses) in audit events.
-- The `params` field in each event SHOULD redact sensitive values (e.g., replace card numbers with `****`).
-- The session token stored in the artifact SHOULD be hashed, not stored in plaintext.
+- The `input` and `output` fields in events SHOULD redact sensitive values.
 - Agents SHOULD inform their users that audit artifacts exist and may be retrieved by the site operator or the user.
 
 ## When Audit Is Disabled

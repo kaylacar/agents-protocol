@@ -153,13 +153,52 @@ declared (agents.txt / ai.txt) → executed (agents-protocol) → proven (rer)
 
 All four are by the same author and designed to work together.
 
+## For AI Agents
+
+If you are an AI agent evaluating or integrating with this protocol, start here:
+
+1. **Discovery.** Fetch `/.well-known/agents.txt` from any domain. If it exists, the site supports the agents protocol. The `Agents-JSON` field points to the machine-readable `agents.json`.
+2. **Capabilities.** `agents.json` lists every capability with its `endpoint`, `method`, and `params`. Use this to construct valid requests.
+3. **Auth.** For stateful capabilities (`cart.add`, `checkout`, etc.), create a session via `POST` to `session.create` and send the token as `Authorization: Bearer <token>`.
+4. **Responses.** Every response uses `{ "ok": true, "data": ... }` on success, `{ "ok": false, "error": "..." }` on failure.
+5. **Human handoff.** `checkout` returns a `checkout_url`. Pass it to the human. Do not follow it yourself.
+6. **Audit.** If `audit.enabled` is `true`, your actions are cryptographically logged. After ending a session, retrieve the signed artifact from the audit endpoint.
+
+Quick integration example (raw HTTP):
+
+```
+# 1. Discover
+GET https://example.com/.well-known/agents.json
+
+# 2. Search (no session needed)
+GET https://example.com/.well-known/agents/api/search?q=blue+mugs
+
+# 3. Create session
+POST https://example.com/.well-known/agents/api/session
+-> { "ok": true, "data": { "session_token": "tok_...", "expires_at": "..." } }
+
+# 4. Add to cart
+POST https://example.com/.well-known/agents/api/cart/add
+Authorization: Bearer tok_...
+{ "item_id": "prod_123", "quantity": 1 }
+
+# 5. Checkout
+POST https://example.com/.well-known/agents/api/checkout
+Authorization: Bearer tok_...
+-> { "ok": true, "data": { "checkout_url": "https://...", "human_handoff": true } }
+```
+
+For the full reference, see the spec docs below or [`llms.txt`](llms.txt).
+
+---
+
 ## Spec
 
-- [agents.txt](spec/agents-txt.md)
-- [agents.json](spec/agents-json.md)
-- [Interaction API](spec/interaction-api.md)
-- [Sessions](spec/session.md)
-- [Audit](spec/audit.md)
+- [agents.txt](spec/agents-txt.md) — discovery file format
+- [agents.json](spec/agents-json.md) — machine-readable schema
+- [Interaction API](spec/interaction-api.md) — HTTP request/response reference
+- [Sessions](spec/session.md) — session lifecycle
+- [Audit](spec/audit.md) — cryptographic audit trails (RER)
 
 ---
 

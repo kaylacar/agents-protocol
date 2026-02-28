@@ -7,7 +7,18 @@
 
 Sessions are short-lived, scoped contexts for stateful agent interactions. Any capability that modifies state (adding to a cart, starting a checkout) requires a session. Sessions give the site a way to group related actions, enforce time limits, and produce audit trails.
 
-Each session maps to exactly one RER envelope and one RER runtime instance (see [Audit Trail](audit.md)).
+Each session maps to exactly one RER envelope and one RER runtime instance when audit is enabled (see [Audit Trail](audit.md)).
+
+## For AI Agents
+
+If you are an AI agent, here is how sessions work in practice:
+
+1. **Create a session** with `POST` to the `session.create` URL from `agents.json`.
+2. **Store the `session_token`** from the response. You will need it for every session-required request.
+3. **Send it as `Authorization: Bearer <session_token>`** on every request to a session-required capability (`cart.add`, `cart.view`, `cart.update`, `cart.remove`, `checkout`).
+4. **Sessions expire.** Check `expires_at` in the response. Once expired, all requests with that token return `401`. Create a new session if you need more time.
+5. **End the session** when done with `DELETE` to the `session.delete` URL, including the `Authorization: Bearer` header.
+6. You do NOT need a session for `search`, `browse`, `detail`, or `contact`.
 
 ## Creating a Session
 
@@ -39,14 +50,14 @@ All fields are optional. A bare `POST` with an empty body is valid.
 ### Response
 
 ```
-HTTP/1.1 201 Created
+HTTP/1.1 200 OK
 Content-Type: application/json
 
 {
   "ok": true,
   "data": {
-    "session_token": "tok_a1b2c3d4e5f6",
-    "expires_at": "2026-02-19T13:30:00Z",
+    "session_token": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "expires_at": "2026-02-19T13:30:00.000Z",
     "capabilities": [
       "cart.add",
       "cart.view",
@@ -60,26 +71,28 @@ Content-Type: application/json
 
 | Field | Type | Description |
 |---|---|---|
-| `session_token` | string | Opaque token the agent must include in subsequent requests. |
+| `session_token` | string | Opaque token the agent must include in subsequent requests. UUID format. |
 | `expires_at` | string (ISO 8601) | When the session expires. |
 | `capabilities` | array of strings | The session-required capabilities available in this session. |
 
-The `session_token` format is implementation-defined. It MUST be at least 32 characters and cryptographically random.
+When audit is enabled, the response also includes `"audit": true`.
 
 ## Using a Session
 
-After creating a session, the agent includes the token in the `X-Agent-Session` header on every request to a session-required capability:
+After creating a session, the agent includes the token in the `Authorization` header on every request to a session-required capability:
 
 ```
-POST /.well-known/agents/api/cart
+POST /.well-known/agents/api/cart/add
 Content-Type: application/json
-X-Agent-Session: tok_a1b2c3d4e5f6
+Authorization: Bearer a1b2c3d4-e5f6-7890-abcd-ef1234567890
 
 {
   "item_id": "prod_9f8e7d",
   "quantity": 1
 }
 ```
+
+The server also accepts `X-Session-Token: <token>` as an alternative header.
 
 If the header is missing or the token is invalid/expired, the site responds with `401 Unauthorized`:
 
@@ -94,7 +107,7 @@ Non-session capabilities (like `search` or `browse`) do not require the header. 
 
 ## Session Expiry
 
-Sessions have a time-to-live (TTL) defined in `agents.json` under `session.ttl`. The default is **1800 seconds** (30 minutes).
+Sessions have a time-to-live (TTL) defined in `agents.json` under `session.ttl_seconds`. The default is **3600 seconds** (1 hour).
 
 - The TTL starts when the session is created.
 - The TTL is **not** extended by activity. It is a hard deadline.
@@ -116,7 +129,7 @@ The agent sends a `DELETE` request:
 
 ```
 DELETE /.well-known/agents/api/session
-X-Agent-Session: tok_a1b2c3d4e5f6
+Authorization: Bearer a1b2c3d4-e5f6-7890-abcd-ef1234567890
 ```
 
 Response:
@@ -125,14 +138,10 @@ Response:
 {
   "ok": true,
   "data": {
-    "session_token": "tok_a1b2c3d4e5f6",
-    "ended_at": "2026-02-19T13:15:00Z",
-    "audit_artifact_url": "/.well-known/agents/api/audit/tok_a1b2c3d4e5f6"
+    "ended": true
   }
 }
 ```
-
-If audit is enabled, the response includes the URL where the signed audit artifact can be retrieved.
 
 ### 3. Checkout Completion
 
@@ -141,38 +150,40 @@ When a `checkout` capability with `human_handoff: true` succeeds, the session is
 ## Session Lifecycle Diagram
 
 ```
-Agent                                   Site
-  |                                       |
-  |  POST /session                        |
-  |-------------------------------------->|
-  |  201 { session_token, expires_at }    |
-  |<--------------------------------------|
-  |                                       |   [RER envelope created]
-  |  POST /cart  (X-Agent-Session: tok)   |
-  |-------------------------------------->|
-  |  201 { cart }                         |   [RER event logged]
-  |<--------------------------------------|
-  |                                       |
-  |  POST /checkout (X-Agent-Session: tok)|
-  |-------------------------------------->|
-  |  200 { handoff_url }                  |   [RER event logged]
-  |<--------------------------------------|
-  |                                       |
-  |  DELETE /session (X-Agent-Session: tok)|
-  |-------------------------------------->|
-  |  200 { ended_at, audit_artifact_url } |   [RER artifact signed]
-  |<--------------------------------------|
+Agent                                        Site
+  |                                            |
+  |  POST /session                             |
+  |------------------------------------------->|
+  |  200 { session_token, expires_at }         |
+  |<-------------------------------------------|
+  |                                            |   [RER envelope created if audit enabled]
+  |  POST /cart/add                            |
+  |  Authorization: Bearer tok_...             |
+  |------------------------------------------->|
+  |  200 { item_id, quantity, cart_size }       |   [RER event logged]
+  |<-------------------------------------------|
+  |                                            |
+  |  POST /checkout                            |
+  |  Authorization: Bearer tok_...             |
+  |------------------------------------------->|
+  |  200 { checkout_url, human_handoff: true } |   [RER event logged]
+  |<-------------------------------------------|
+  |                                            |
+  |  DELETE /session                           |
+  |  Authorization: Bearer tok_...             |
+  |------------------------------------------->|
+  |  200 { ended: true }                       |   [RER artifact signed]
+  |<-------------------------------------------|
 ```
 
 ## Concurrency
 
-- An agent MAY have multiple active sessions with the same site, up to the `rate_limit.max_sessions` limit.
+- An agent MAY have multiple active sessions with the same site.
 - Each session is independent. Cart contents are not shared across sessions.
-- Sites SHOULD enforce the `max_sessions` limit and return `429` if exceeded.
 
 ## Security Considerations
 
 - Session tokens MUST be treated as secrets. Agents MUST NOT log them in plain text or share them with other agents.
 - Sites SHOULD bind sessions to the originating IP or agent identity where possible.
 - Sites MUST invalidate all sessions if a security event is detected (e.g., key rotation).
-- Session tokens MUST be generated using a cryptographically secure random number generator (CSPRNG).
+- Session tokens MUST be generated using a cryptographically secure random number generator (CSPRNG). The SDK uses UUIDs.

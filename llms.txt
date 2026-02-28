@@ -1,0 +1,101 @@
+# agents-protocol
+
+> The execution layer for AI agent interactions on the web. Sites declare capabilities via agents.txt/agents.json, agents consume them via a typed HTTP API with sessions, rate limiting, and optional cryptographic audit trails.
+
+## Quick Start for Agents
+
+1. Fetch `/.well-known/agents.json` from any domain to discover capabilities.
+2. Each capability has a `name`, `endpoint`, `method`, and `params`.
+3. For session-required capabilities, POST to `session.create` first.
+4. Send session token as `Authorization: Bearer <token>`.
+5. All responses: `{ "ok": true, "data": ... }` or `{ "ok": false, "error": "..." }`.
+
+## Schema (agents.json)
+
+Top-level fields: `schema_version`, `site`, `capabilities`, `session`, `flows`, `rate_limit`, `audit`.
+
+### session object
+- `create`: POST endpoint to create a session (default: `/.well-known/agents/api/session`)
+- `delete`: DELETE endpoint to end a session (default: same as create)
+- `ttl_seconds`: session time-to-live in seconds (default: 3600)
+
+### rate_limit object
+- `requests_per_minute`: max requests per minute
+
+### audit object
+- `enabled`: boolean
+- `endpoint`: URL with `:session_id` placeholder
+
+## Capabilities
+
+| Name | Method | Endpoint | Session | Description |
+|------|--------|----------|---------|-------------|
+| search | GET | /search | no | Search by query param `q` |
+| browse | GET | /browse | no | List items, supports `page`, `limit`, `category` |
+| detail | GET | /detail/:id | no | Get item by ID (path param) |
+| cart.add | POST | /cart/add | yes | Add item: `{ item_id, quantity, name?, price? }` |
+| cart.view | GET | /cart/view | yes | View cart items and subtotal |
+| cart.update | PUT | /cart/update | yes | Update quantity: `{ item_id, quantity }` |
+| cart.remove | DELETE | /cart/remove | yes | Remove item: `{ item_id }` |
+| checkout | POST | /checkout | yes | Returns `{ checkout_url, human_handoff: true }` |
+| contact | POST | /contact | no | Send message: `{ name, email, message }` |
+
+All endpoints are prefixed with `/.well-known/agents/api`.
+
+## Auth
+
+- `Authorization: Bearer <session_token>` (preferred)
+- `X-Session-Token: <session_token>` (alternative)
+- Only required for capabilities where `requires_session: true`
+
+## Session Lifecycle
+
+```
+POST /session → { session_token, expires_at, capabilities }
+... use capabilities with Bearer token ...
+DELETE /session (with Bearer token) → { ended: true }
+```
+
+Sessions expire after `ttl_seconds`. Not extended by activity.
+
+## Response Shapes
+
+### cart.add response
+```json
+{ "item_id": "...", "quantity": 2, "cart_size": 1 }
+```
+
+### cart.view response
+```json
+{ "items": [...], "subtotal": 56.00 }
+```
+
+### checkout response
+```json
+{ "checkout_url": "https://...", "human_handoff": true }
+```
+
+IMPORTANT: Do not follow checkout_url. Hand it to the human.
+
+## Error Handling
+
+- 400: bad request, check `error` field
+- 401: session expired or invalid, create new session
+- 404: resource not found
+- 429: rate limited, wait `Retry-After` seconds
+- 500: server error, retry with backoff (max 3)
+
+## Spec Docs
+
+- agents.txt format: spec/agents-txt.md
+- agents.json schema: spec/agents-json.md
+- Interaction API: spec/interaction-api.md
+- Sessions: spec/session.md
+- Audit trails: spec/audit.md
+
+## Optional: npm packages
+
+```
+npm install @agents-protocol/client  # for agent developers
+npm install @agents-protocol/sdk     # for site owners
+```

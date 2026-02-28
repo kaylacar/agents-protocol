@@ -15,31 +15,41 @@ https://<domain>/.well-known/agents.json
 
 The file MUST be served with `Content-Type: application/json; charset=utf-8`.
 
-The canonical JSON Schema is at [`schemas/agents.schema.json`](schemas/agents.schema.json) (JSON Schema draft-07).
+## For AI Agents
+
+If you are an AI agent consuming this spec, here is the quickest path to integration:
+
+1. Fetch `/.well-known/agents.json` from the target domain.
+2. Read `capabilities` to learn what you can do. Each entry has a `name`, `endpoint`, `method`, and optional `params`.
+3. For capabilities where `requires_session` is `true`, create a session first by `POST`ing to `session.create`.
+4. Send the session token as `Authorization: Bearer <token>` on all session-required requests.
+5. Use the `params` object on each capability to construct valid requests. For `GET` endpoints, send params as query strings. For `POST`/`PUT`/`DELETE`, send them as JSON body.
+6. If `flows` is present, follow the suggested step sequences for common tasks.
+7. Respect `rate_limit.requests_per_minute`.
 
 ## Top-Level Structure
 
 ```json
 {
-  "protocol_version": "0.1.0",
+  "schema_version": "1.0",
   "site": { ... },
   "capabilities": [ ... ],
   "session": { ... },
+  "flows": [ ... ],
   "rate_limit": { ... },
-  "audit": { ... },
-  "docs_url": "https://example.com/docs/agents"
+  "audit": { ... }
 }
 ```
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `protocol_version` | string | Yes | Semver version of the protocol. |
+| `schema_version` | string | Yes | Version of the agents.json schema. |
 | `site` | object | Yes | Site identity. |
 | `capabilities` | array | Yes | List of capability objects (at least one). |
 | `session` | object | No | Session configuration. Required if any capability uses sessions. |
+| `flows` | array | No | Suggested multi-step workflows. |
 | `rate_limit` | object | No | Rate limiting configuration. |
 | `audit` | object | No | Audit trail configuration. |
-| `docs_url` | string | No | URL to human-readable docs. |
 
 ## `site` Object
 
@@ -71,20 +81,18 @@ Each entry describes one thing an agent can do on the site.
   "method": "GET",
   "params": {
     "q": { "type": "string", "required": true, "description": "Search query" },
-    "page": { "type": "integer", "required": false, "default": 1, "description": "Page number" },
-    "limit": { "type": "integer", "required": false, "default": 20, "description": "Results per page" }
+    "limit": { "type": "integer", "required": false, "description": "Results per page" }
   },
-  "requires_session": false,
-  "human_handoff": false
+  "requires_session": false
 }
 ```
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `name` | string | Yes | Capability identifier. Lowercase, may contain dots and underscores (`search`, `cart.add`). |
+| `name` | string | Yes | Capability identifier. Lowercase, may contain dots (`search`, `cart.add`). |
 | `description` | string | No | Plain-language description of what this does. |
-| `endpoint` | string | Yes | URL path for this capability, relative to the site origin. |
-| `method` | string | Yes | HTTP method: `GET`, `POST`, `PUT`, `PATCH`, or `DELETE`. |
+| `endpoint` | string | Yes | URL path for this capability, relative to the site origin. May include path parameters (e.g., `/:id`). |
+| `method` | string | Yes | HTTP method: `GET`, `POST`, `PUT`, or `DELETE`. |
 | `params` | object | No | Map of parameter names to parameter descriptors. |
 | `requires_session` | boolean | No | Whether the agent must have an active session. Default: `false`. |
 | `human_handoff` | boolean | No | Whether this returns a URL for a human to complete. Default: `false`. |
@@ -102,59 +110,77 @@ Each value in the `params` object describes one parameter.
 | `enum` | array | No | Allowed values. |
 | `items` | object | No | Schema for array items (when `type` is `array`). |
 
-For `GET` endpoints, parameters are sent as query string values. For `POST`/`PUT`/`PATCH`, parameters are sent in the JSON request body.
+For `GET` endpoints, parameters are sent as query string values. For `POST`/`PUT`/`DELETE`, parameters are sent in the JSON request body.
 
 ## `session` Object
 
 ```json
 {
-  "endpoint": "/.well-known/agents/api/session",
-  "ttl": 1800
+  "create": "/.well-known/agents/api/session",
+  "delete": "/.well-known/agents/api/session",
+  "ttl_seconds": 3600
 }
 ```
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `endpoint` | string | No | URL to create sessions. Default: `/.well-known/agents/api/session`. |
-| `ttl` | integer | No | Session time-to-live in seconds. Minimum: 60. Default: `1800`. |
+| `create` | string | No | URL to create sessions via `POST`. Default: `/.well-known/agents/api/session`. |
+| `delete` | string | No | URL to end sessions via `DELETE`. Default: `/.well-known/agents/api/session`. |
+| `ttl_seconds` | integer | No | Session time-to-live in seconds. Minimum: 60. Default: `3600`. |
 
 If any capability has `requires_session: true`, the `session` object SHOULD be present. If omitted, the defaults apply.
+
+## `flows` Array
+
+Flows describe suggested multi-step workflows for common tasks.
+
+```json
+{
+  "name": "purchase",
+  "description": "Search for a product, view details, add to cart, and check out",
+  "steps": ["search", "detail", "cart.add", "checkout"]
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | string | Yes | Flow identifier. |
+| `description` | string | No | Plain-language description of what this flow accomplishes. |
+| `steps` | array of strings | Yes | Ordered list of capability names to call. |
 
 ## `rate_limit` Object
 
 ```json
 {
-  "max_requests_per_minute": 60,
-  "max_sessions": 5
+  "requests_per_minute": 60
 }
 ```
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `max_requests_per_minute` | integer | No | Maximum requests per minute. |
-| `max_sessions` | integer | No | Maximum concurrent sessions per agent. |
+| `requests_per_minute` | integer | No | Maximum requests per minute. |
 
 ## `audit` Object
 
 ```json
 {
   "enabled": true,
-  "endpoint": "/.well-known/agents/api/audit",
-  "public_key": "MCowBQYDK2VwAyEA..."
+  "endpoint": "/.well-known/agents/api/audit/:session_id",
+  "description": "Retrieve signed RER artifact for a completed session"
 }
 ```
 
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `enabled` | boolean | No | Whether audit trails are produced. Default: `false`. |
-| `endpoint` | string | No | URL to retrieve audit artifacts. Default: `/.well-known/agents/api/audit`. |
-| `public_key` | string | No | Base64-encoded Ed25519 public key for offline artifact verification. |
+| `endpoint` | string | No | URL to retrieve audit artifacts. Includes `:session_id` placeholder. Default: `/.well-known/agents/api/audit/:session_id`. |
+| `description` | string | No | Human-readable description of the audit endpoint. |
 
 ## Full Example
 
 ```json
 {
-  "protocol_version": "0.1.0",
+  "schema_version": "1.0",
   "site": {
     "name": "Acme Ceramics",
     "url": "https://acmeceramics.example.com",
@@ -169,10 +195,8 @@ If any capability has `requires_session: true`, the `session` object SHOULD be p
       "method": "GET",
       "params": {
         "q": { "type": "string", "required": true, "description": "Search query" },
-        "page": { "type": "integer", "default": 1, "description": "Page number" },
-        "limit": { "type": "integer", "default": 20, "description": "Results per page" }
-      },
-      "requires_session": false
+        "limit": { "type": "integer", "description": "Results per page" }
+      }
     },
     {
       "name": "browse",
@@ -181,55 +205,55 @@ If any capability has `requires_session: true`, the `session` object SHOULD be p
       "method": "GET",
       "params": {
         "category": { "type": "string", "description": "Filter by category" },
-        "sort": { "type": "string", "enum": ["price_asc", "price_desc", "newest"], "default": "newest" },
-        "page": { "type": "integer", "default": 1 },
-        "limit": { "type": "integer", "default": 20 }
-      },
-      "requires_session": false
+        "sort": { "type": "string", "enum": ["price_asc", "price_desc", "newest"], "description": "Sort order" },
+        "page": { "type": "integer", "description": "Page number" },
+        "limit": { "type": "integer", "description": "Results per page" }
+      }
     },
     {
       "name": "detail",
       "description": "Get full details for a product",
-      "endpoint": "/.well-known/agents/api/detail",
+      "endpoint": "/.well-known/agents/api/detail/:id",
       "method": "GET",
       "params": {
         "id": { "type": "string", "required": true, "description": "Product ID" }
-      },
-      "requires_session": false
+      }
     },
     {
       "name": "cart.add",
       "description": "Add a product to the cart",
-      "endpoint": "/.well-known/agents/api/cart",
+      "endpoint": "/.well-known/agents/api/cart/add",
       "method": "POST",
       "params": {
         "item_id": { "type": "string", "required": true, "description": "Product ID" },
-        "quantity": { "type": "integer", "required": true, "description": "Quantity to add" }
+        "quantity": { "type": "integer", "required": true, "description": "Quantity to add" },
+        "name": { "type": "string", "description": "Product name" },
+        "price": { "type": "number", "description": "Product price" }
       },
       "requires_session": true
     },
     {
       "name": "cart.view",
       "description": "View the current cart",
-      "endpoint": "/.well-known/agents/api/cart",
+      "endpoint": "/.well-known/agents/api/cart/view",
       "method": "GET",
       "requires_session": true
     },
     {
       "name": "cart.update",
       "description": "Update quantity of a cart item",
-      "endpoint": "/.well-known/agents/api/cart",
-      "method": "PATCH",
+      "endpoint": "/.well-known/agents/api/cart/update",
+      "method": "PUT",
       "params": {
         "item_id": { "type": "string", "required": true, "description": "Product ID" },
-        "quantity": { "type": "integer", "required": true, "description": "New quantity (0 to remove)" }
+        "quantity": { "type": "integer", "required": true, "description": "New quantity" }
       },
       "requires_session": true
     },
     {
       "name": "cart.remove",
       "description": "Remove an item from the cart",
-      "endpoint": "/.well-known/agents/api/cart",
+      "endpoint": "/.well-known/agents/api/cart/remove",
       "method": "DELETE",
       "params": {
         "item_id": { "type": "string", "required": true, "description": "Product ID to remove" }
@@ -246,27 +270,33 @@ If any capability has `requires_session: true`, the `session` object SHOULD be p
     }
   ],
   "session": {
-    "endpoint": "/.well-known/agents/api/session",
-    "ttl": 3600
+    "create": "/.well-known/agents/api/session",
+    "delete": "/.well-known/agents/api/session",
+    "ttl_seconds": 3600
   },
+  "flows": [
+    {
+      "name": "purchase",
+      "description": "Search for a product, view details, add to cart, and check out",
+      "steps": ["search", "detail", "cart.add", "checkout"]
+    }
+  ],
   "rate_limit": {
-    "max_requests_per_minute": 60,
-    "max_sessions": 5
+    "requests_per_minute": 60
   },
   "audit": {
     "enabled": true,
-    "endpoint": "/.well-known/agents/api/audit",
-    "public_key": "MCowBQYDK2VwAyEABkii3p4rtgXxez3sB2DfGel553kx4EAKWBLMFCYV6YM="
-  },
-  "docs_url": "https://acmeceramics.example.com/docs/agents"
+    "endpoint": "/.well-known/agents/api/audit/:session_id",
+    "description": "Retrieve signed RER artifact for a completed session"
+  }
 }
 ```
 
 ## Validation
 
-Implementations SHOULD validate `agents.json` against the [JSON Schema](schemas/agents.schema.json) before using it. At minimum, verify:
+Implementations SHOULD validate `agents.json` before using it. At minimum, verify:
 
-1. `protocol_version` is present and is a valid semver string.
+1. `schema_version` is present.
 2. `site.name` and `site.url` are present.
 3. `capabilities` is a non-empty array.
 4. Each capability has `name`, `endpoint`, and `method`.

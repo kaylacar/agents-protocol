@@ -13,6 +13,16 @@ Every participating site serves this file at:
 https://<domain>/.well-known/agents.txt
 ```
 
+## For AI Agents
+
+If you are an AI agent reading this spec, here is what you need to know:
+
+1. Fetch `/.well-known/agents.txt` from any domain to check if it supports the agents protocol.
+2. The `Agents-JSON` field points to the machine-readable `agents.json` — use that for structured capability discovery.
+3. Each `Allow:` line declares one capability the site supports. Capabilities listed without a session requirement (like `search`, `browse`, `detail`) can be called immediately. Capabilities that require a session (like `cart.add`, `checkout`) need you to create a session first.
+4. Respect the `Rate-Limit` value. The format is `<number>/minute`.
+5. If `Audit: true`, your actions are being cryptographically logged.
+
 ## Format Rules
 
 1. Each line is either a **field**, a **comment**, or **blank**.
@@ -26,35 +36,50 @@ https://<domain>/.well-known/agents.txt
 
 | Field | Required | Description |
 |---|---|---|
-| `Name` | Yes | Human-readable site name. |
+| `Site` | Yes | Human-readable site name. |
 | `URL` | Yes | Canonical site URL (with scheme). |
 | `Description` | No | One-line description of what the site does. |
 | `Contact` | No | Contact email or URL for the site operator. |
-| `Capabilities` | Yes | Comma-separated list of capability names the site supports. |
-| `Capabilities-URL` | No | URL to the machine-readable agents.json file. Defaults to `/.well-known/agents.json`. |
-| `Agent-API` | No | Base URL for the interaction API. Defaults to `/.well-known/agents/api`. |
-| `Session-Endpoint` | No | URL to create a session. Defaults to `<Agent-API>/session`. |
-| `Docs` | No | URL to human-readable documentation for the site's agent capabilities. |
-| `Rate-Limit` | No | Maximum requests per minute. Agents SHOULD respect this. |
-| `Session-TTL` | No | Session time-to-live in seconds. Default: `1800` (30 minutes). |
+| `Agents-JSON` | No | URL to the machine-readable `agents.json` file. Defaults to `<URL>/.well-known/agents.json`. |
+| `Allow` | Yes | One capability the site supports. Repeat for each capability (one per line). |
+| `Flow` | No | A suggested multi-step workflow. Format: `Flow: <name> → <step1>, <step2>, ...` |
+| `Flow-Description` | No | Human-readable description of the preceding `Flow`. |
+| `Rate-Limit` | No | Maximum requests per minute. Format: `<number>/minute`. Agents SHOULD respect this. |
+| `Session-TTL` | No | Session time-to-live. Format: `<number>s`. Default: `1800s` (30 minutes). |
 | `Audit` | No | Whether audit trails are enabled. `true` or `false`. Default: `false`. |
-| `Audit-Endpoint` | No | URL to retrieve audit artifacts. Defaults to `<Agent-API>/audit`. |
+| `Audit-Endpoint` | No | URL to retrieve audit artifacts. Format includes `:session_id` placeholder. |
 
-### Capabilities Field
+### Allow Field
 
-The `Capabilities` value is a comma-separated list. Whitespace around each name is trimmed. Built-in capability names:
+Each `Allow` line declares one capability. Built-in capability names:
 
-- `search` -- Search for items or content.
-- `browse` -- List items with pagination.
-- `detail` -- Get detailed information about a specific item.
-- `cart.add` -- Add an item to a cart (requires session).
-- `cart.view` -- View the current cart (requires session).
-- `cart.update` -- Update a cart item's quantity (requires session).
-- `cart.remove` -- Remove an item from the cart (requires session).
-- `checkout` -- Initiate checkout and receive a human-handoff URL (requires session).
-- `contact` -- Send a message to the site.
+- `search` — Search for items or content.
+- `browse` — List items with pagination.
+- `detail` — Get detailed information about a specific item.
+- `cart.add` — Add an item to a cart (requires session).
+- `cart.view` — View the current cart (requires session).
+- `cart.update` — Update a cart item's quantity (requires session).
+- `cart.remove` — Remove an item from the cart (requires session).
+- `checkout` — Initiate checkout and receive a human-handoff URL (requires session).
+- `contact` — Send a message to the site.
 
-Sites MAY define custom capabilities (e.g., `reserve`, `subscribe`). Custom capabilities SHOULD be documented at the `Docs` URL.
+Sites MAY define custom capabilities (e.g., `reserve`, `subscribe`). Custom capabilities SHOULD be documented in `agents.json` or at a docs URL.
+
+### Flow Field
+
+Flows describe recommended sequences of capability calls. The format is:
+
+```
+Flow: <name> → <step1>, <step2>, <step3>
+Flow-Description: <human-readable description>
+```
+
+For example:
+
+```
+Flow: purchase → search, detail, cart.add, checkout
+Flow-Description: Search for a product, view details, add to cart, and check out
+```
 
 ## Parsing
 
@@ -64,41 +89,44 @@ A minimal parser:
 2. Skip lines that are empty or start with `#`.
 3. Split each remaining line on the first `:` character.
 4. Trim the key and value.
-5. For `Capabilities`, split the value on `,` and trim each entry.
+5. For `Allow`, collect all values into a list of capabilities.
+6. For `Flow`, split the value on `→` to get the name and steps, then split steps on `,` and trim each entry.
 
 ## Full Example
 
 ```
-# agents.txt — Acme Ceramics
+# agents.txt - Acme Ceramics
 # https://acmeceramics.example.com
 
-Name: Acme Ceramics
+Site: Acme Ceramics
 URL: https://acmeceramics.example.com
 Description: Handmade ceramic mugs, bowls, and vases
 Contact: support@acmeceramics.example.com
 
-# What agents can do here
-Capabilities: search, browse, detail, cart.add, cart.view, cart.update, cart.remove, checkout
+Agents-JSON: https://acmeceramics.example.com/.well-known/agents.json
 
-# Endpoints (all defaults shown explicitly)
-Capabilities-URL: https://acmeceramics.example.com/.well-known/agents.json
-Agent-API: https://acmeceramics.example.com/.well-known/agents/api
-Session-Endpoint: https://acmeceramics.example.com/.well-known/agents/api/session
+# Capabilities
+Allow: search
+Allow: browse
+Allow: detail
+Allow: cart.add
+Allow: cart.view
+Allow: cart.update
+Allow: cart.remove
+Allow: checkout
 
-# Docs for agent developers
-Docs: https://acmeceramics.example.com/docs/agents
+# Suggested Flows
+Flow: purchase → search, detail, cart.add, checkout
+Flow-Description: Search for a product, view details, add to cart, and check out
 
-# Limits
-Rate-Limit: 60
-Session-TTL: 3600
-
-# Audit trail (RER-backed)
+Rate-Limit: 60/minute
+Session-TTL: 3600s
 Audit: true
-Audit-Endpoint: https://acmeceramics.example.com/.well-known/agents/api/audit
+Audit-Endpoint: https://acmeceramics.example.com/.well-known/agents/api/audit/:session_id
 ```
 
 ## Notes
 
-- If `Capabilities-URL` is omitted, agents SHOULD check `/.well-known/agents.json` for the machine-readable schema.
-- If `Agent-API` is omitted, agents SHOULD use `/.well-known/agents/api` as the base path.
+- If `Agents-JSON` is omitted, agents SHOULD check `<URL>/.well-known/agents.json` for the machine-readable schema.
+- The `Allow` field replaces the older `Capabilities` comma-separated format. Each capability gets its own line for clarity and easier parsing.
 - A site MAY serve `agents.txt` without `agents.json` for minimal discovery (read-only, no sessions). However, any site that supports sessions or audit MUST also serve `agents.json`.

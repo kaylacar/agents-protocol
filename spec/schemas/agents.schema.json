@@ -2,16 +2,14 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://agents-protocol.org/schemas/agents.schema.json",
   "title": "agents.json",
-  "description": "Machine-readable capability declaration for the agents.txt protocol.",
+  "description": "Machine-readable capability declaration for the agents protocol.",
   "type": "object",
-  "required": ["protocol_version", "site", "capabilities"],
-  "additionalProperties": false,
+  "required": ["schema_version", "site", "capabilities"],
   "properties": {
-    "protocol_version": {
+    "schema_version": {
       "type": "string",
-      "description": "Semantic version of the agents.txt protocol this file conforms to.",
-      "pattern": "^\\d+\\.\\d+\\.\\d+$",
-      "examples": ["0.1.0"]
+      "description": "Version of the agents.json schema.",
+      "examples": ["1.0"]
     },
     "site": {
       "type": "object",
@@ -53,45 +51,50 @@
     "session": {
       "type": "object",
       "description": "Session configuration. Required if any capability has requires_session: true.",
-      "additionalProperties": false,
       "properties": {
-        "endpoint": {
+        "create": {
           "type": "string",
-          "description": "URL to create a session. Default: /.well-known/agents/api/session",
+          "description": "URL to create a session via POST.",
+          "default": "/.well-known/agents/api/session",
           "examples": ["/.well-known/agents/api/session"]
         },
-        "ttl": {
+        "delete": {
+          "type": "string",
+          "description": "URL to end a session via DELETE.",
+          "default": "/.well-known/agents/api/session",
+          "examples": ["/.well-known/agents/api/session"]
+        },
+        "ttl_seconds": {
           "type": "integer",
           "description": "Session time-to-live in seconds.",
-          "default": 1800,
+          "default": 3600,
           "minimum": 60,
           "examples": [1800, 3600]
         }
       }
     },
+    "flows": {
+      "type": "array",
+      "description": "Suggested multi-step workflows for common tasks.",
+      "items": {
+        "$ref": "#/definitions/flow"
+      }
+    },
     "rate_limit": {
       "type": "object",
       "description": "Rate limiting configuration.",
-      "additionalProperties": false,
       "properties": {
-        "max_requests_per_minute": {
+        "requests_per_minute": {
           "type": "integer",
           "description": "Maximum requests per minute across all endpoints.",
           "minimum": 1,
           "examples": [60]
-        },
-        "max_sessions": {
-          "type": "integer",
-          "description": "Maximum concurrent sessions per agent.",
-          "minimum": 1,
-          "examples": [5]
         }
       }
     },
     "audit": {
       "type": "object",
       "description": "Audit trail configuration (RER integration).",
-      "additionalProperties": false,
       "properties": {
         "enabled": {
           "type": "boolean",
@@ -100,19 +103,15 @@
         },
         "endpoint": {
           "type": "string",
-          "description": "URL to retrieve audit artifacts. Default: /.well-known/agents/api/audit",
-          "examples": ["/.well-known/agents/api/audit"]
+          "description": "URL to retrieve audit artifacts. Includes :session_id placeholder.",
+          "examples": ["/.well-known/agents/api/audit/:session_id"]
         },
-        "public_key": {
+        "description": {
           "type": "string",
-          "description": "Base64-encoded Ed25519 public key used to sign audit artifacts. Allows offline verification."
+          "description": "Human-readable description of the audit endpoint.",
+          "examples": ["Retrieve signed RER artifact for a completed session"]
         }
       }
-    },
-    "docs_url": {
-      "type": "string",
-      "format": "uri",
-      "description": "URL to human-readable documentation for the site's agent integration."
     }
   },
   "definitions": {
@@ -120,7 +119,6 @@
       "type": "object",
       "description": "A single capability the site exposes.",
       "required": ["name", "endpoint", "method"],
-      "additionalProperties": false,
       "properties": {
         "name": {
           "type": "string",
@@ -135,12 +133,12 @@
         },
         "endpoint": {
           "type": "string",
-          "description": "URL path for this capability, relative to the site origin.",
-          "examples": ["/.well-known/agents/api/search"]
+          "description": "URL path for this capability, relative to the site origin. May include path parameters (e.g., /:id).",
+          "examples": ["/.well-known/agents/api/search", "/.well-known/agents/api/detail/:id"]
         },
         "method": {
           "type": "string",
-          "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"],
+          "enum": ["GET", "POST", "PUT", "DELETE"],
           "description": "HTTP method for this capability."
         },
         "params": {
@@ -166,7 +164,6 @@
       "type": "object",
       "description": "Describes a single parameter for a capability.",
       "required": ["type"],
-      "additionalProperties": false,
       "properties": {
         "type": {
           "type": "string",
@@ -192,6 +189,30 @@
         "items": {
           "type": "object",
           "description": "Schema for array items (when type is 'array')."
+        }
+      }
+    },
+    "flow": {
+      "type": "object",
+      "description": "A suggested multi-step workflow.",
+      "required": ["name", "steps"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Flow identifier.",
+          "examples": ["purchase"]
+        },
+        "description": {
+          "type": "string",
+          "description": "What this flow accomplishes.",
+          "examples": ["Search for a product, view details, add to cart, and check out"]
+        },
+        "steps": {
+          "type": "array",
+          "description": "Ordered list of capability names to call.",
+          "items": { "type": "string" },
+          "minItems": 2,
+          "examples": [["search", "detail", "cart.add", "checkout"]]
         }
       }
     }
