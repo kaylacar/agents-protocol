@@ -59,7 +59,16 @@ export async function request<T = unknown>(
       await sleep(retryDelay * Math.pow(2, attempt - 1));
     }
 
-    const res = await fetchImpl(fullUrl, init);
+    let res: globalThis.Response;
+    try {
+      res = await fetchImpl(fullUrl, init);
+    } catch (err) {
+      // Network error (DNS failure, connection refused, etc.) — retry
+      lastError = err instanceof Error
+        ? new AgentClientError(`Network error: ${err.message}`)
+        : new AgentClientError('Network error');
+      continue;
+    }
 
     if (res.status === 429) {
       lastError = new AgentClientError('Rate limit exceeded — retrying', 429);

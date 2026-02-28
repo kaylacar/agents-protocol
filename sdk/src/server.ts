@@ -196,7 +196,15 @@ export class AgentDoor {
       }
 
       const agentReq = expressToAgentRequest(req);
-      const result = await this.dispatch(agentReq);
+
+      let result: InternalResponse | null;
+      try {
+        result = await this.dispatch(agentReq);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Internal server error';
+        res.status(500).json({ ok: false, error: message });
+        return;
+      }
 
       if (result === null) {
         // Not our route — intercept send() to inject <link> into HTML pages
@@ -232,8 +240,26 @@ export class AgentDoor {
         });
       }
 
-      const agentReq = await webRequestToAgentRequest(request);
-      const result = await this.dispatch(agentReq);
+      let agentReq: AgentRequest;
+      try {
+        agentReq = await webRequestToAgentRequest(request);
+      } catch {
+        return new globalThis.Response(JSON.stringify({ ok: false, error: 'Bad request' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(agentsJsonPath) },
+        });
+      }
+
+      let result: InternalResponse | null;
+      try {
+        result = await this.dispatch(agentReq);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Internal server error';
+        return new globalThis.Response(JSON.stringify({ ok: false, error: message }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(agentsJsonPath) },
+        });
+      }
 
       if (result === null) {
         return new globalThis.Response(JSON.stringify({ ok: false, error: 'Not found' }), {
@@ -303,7 +329,7 @@ export class AgentDoor {
           this.auditManager.startSession(result.sessionToken, this.config.site.url, result.capabilities);
         }
         return {
-          status: 200,
+          status: 201,
           body: {
             ok: true,
             data: {

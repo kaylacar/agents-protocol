@@ -13,6 +13,7 @@ export class SessionManager {
     this.ttl = ttlSeconds;
     this.capabilityNames = capabilities.map(c => c.name);
     this.cleanupInterval = setInterval(() => this.cleanup(), 60_000);
+    if (this.cleanupInterval.unref) this.cleanupInterval.unref();
   }
 
   private capabilityNames: string[];

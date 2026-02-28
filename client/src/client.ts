@@ -234,8 +234,12 @@ export class AgentClient {
 
       yield items;
 
+      // Stop when we've fetched all items, or when a partial page signals the end.
+      // If total is not provided, use page size as the indicator: a page smaller
+      // than the limit means there are no more results.
       const fetched = page * limit;
-      if (fetched >= (result?.total ?? fetched)) break;
+      if (result?.total != null && fetched >= result.total) break;
+      if (items.length < limit) break;
       page++;
     }
   }
