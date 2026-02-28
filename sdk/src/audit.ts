@@ -49,6 +49,9 @@ interface ArtifactEntry {
   expiresAt: number; // ms since epoch — evicted after one additional TTL window
 }
 
+/** Cap stored artifacts to prevent unbounded memory growth. */
+const MAX_ARTIFACTS = 10_000;
+
 export class AuditManager {
   private keyPair: Ed25519KeyPair;
   private sessions = new Map<string, SessionEntry>();
@@ -190,7 +193,9 @@ export class AuditManager {
       return null;
     }
 
-    this.artifacts.set(sessionToken, { artifact, expiresAt: Date.now() + this.ttlSeconds * 1000 });
+    if (this.artifacts.size < MAX_ARTIFACTS) {
+      this.artifacts.set(sessionToken, { artifact, expiresAt: Date.now() + this.ttlSeconds * 1000 });
+    }
     this.sessions.delete(sessionToken);
     this.clearPendingHandlers(sessionToken);
 

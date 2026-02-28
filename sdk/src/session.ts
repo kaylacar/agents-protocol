@@ -1,6 +1,9 @@
 import { v4 as uuidv4 } from 'uuid';
 import { SessionData, CapabilityDefinition } from './types';
 
+/** Reject new sessions once this many are active (OOM guard). */
+const MAX_SESSIONS = 10_000;
+
 export class SessionManager {
   private sessions = new Map<string, SessionData>();
   private cleanupInterval: ReturnType<typeof setInterval>;
@@ -15,6 +18,9 @@ export class SessionManager {
   private capabilityNames: string[];
 
   createSession(siteId: string): { sessionToken: string; expiresAt: Date; capabilities: string[] } {
+    if (this.sessions.size >= MAX_SESSIONS) {
+      throw new Error('Too many active sessions');
+    }
     const sessionToken = uuidv4();
     const expiresAt = new Date(Date.now() + this.ttl * 1000);
     const session: SessionData = {

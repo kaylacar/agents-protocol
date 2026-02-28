@@ -11,6 +11,9 @@
     "build": "tsc",
     "test": "jest"
   },
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "dependencies": {
     "uuid": "^9.0.0"
   },

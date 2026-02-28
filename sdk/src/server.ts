@@ -10,8 +10,7 @@ import { generateAgentsTxt } from './agents-txt';
 import { generateAgentsJson } from './agents-json';
 import { SessionManager } from './session';
 import { RateLimiter } from './rate-limiter';
-import { AuditManager } from './audit';
-import { PolicyDeniedError } from '@rer/core';
+import type { AuditManager } from './audit';
 
 interface RouteEntry {
   method: string;
@@ -27,6 +26,31 @@ interface InternalResponse {
 }
 
 const AGENTS_REL = 'agents';
+
+/**
+ * Duck-type check for PolicyDeniedError from @rer/core.
+ * Avoids a hard import so users without @rer/* installed can still use the SDK.
+ */
+function isPolicyDeniedError(err: unknown): boolean {
+  return err instanceof Error && err.constructor.name === 'PolicyDeniedError';
+}
+
+/**
+ * Dynamically load AuditManager — isolates the @rer/* dependency so it is only
+ * required when audit: true.
+ */
+function loadAuditManager(ttl: number): AuditManager {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { AuditManager: Cls } = require('./audit') as typeof import('./audit');
+    return new Cls(ttl);
+  } catch {
+    throw new Error(
+      'audit: true requires @rer/core and @rer/runtime to be installed. ' +
+      'Install them or set audit: false.',
+    );
+  }
+}
 
 export class AgentDoor {
   private config: AgentDoorConfig;
@@ -48,7 +72,7 @@ export class AgentDoor {
     this.rateLimit = config.rateLimit ?? 60;
     this.sessionManager = new SessionManager(config.sessionTtl ?? 3600, this.capabilities);
     this.rateLimiter = new RateLimiter();
-    this.auditManager = config.audit ? new AuditManager(config.sessionTtl ?? 3600) : null;
+    this.auditManager = config.audit ? loadAuditManager(config.sessionTtl ?? 3600) : null;
     this.agentsTxt = generateAgentsTxt(config);
     this.agentsJson = generateAgentsJson(config);
     this.agentsJsonPath = `${this.basePath}/agents.json`;
@@ -163,7 +187,8 @@ export class AgentDoor {
       res.setHeader('Link', `<${this.agentsJsonPath}>; rel="${AGENTS_REL}"`);
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Session-Token');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Session-Token, X-Agent-Session');
+      res.setHeader('Access-Control-Expose-Headers', 'Retry-After, X-RateLimit-Remaining, X-RateLimit-Reset, Link');
 
       if (req.method === 'OPTIONS') {
         res.status(204).end();
@@ -268,7 +293,12 @@ export class AgentDoor {
       handler: async (req) => {
         const rate = this.checkRate(req);
         if (!rate.allowed) return rateLimitResponse(rate.resetAt);
-        const result = this.sessionManager.createSession(this.config.site.url);
+        let result;
+        try {
+          result = this.sessionManager.createSession(this.config.site.url);
+        } catch {
+          return { status: 429, body: { ok: false, error: 'Too many active sessions' } };
+        }
         if (this.auditManager) {
           this.auditManager.startSession(result.sessionToken, this.config.site.url, result.capabilities);
         }
@@ -350,7 +380,7 @@ export class AgentDoor {
             return { status: 200, body: { ok: true, data } };
           } catch (err: unknown) {
             const message = err instanceof Error ? err.message : 'Unknown error';
-            const status = err instanceof PolicyDeniedError ? 403 : 400;
+            const status = isPolicyDeniedError(err) ? 403 : 400;
             return { status, body: { ok: false, error: message } };
           }
         },
@@ -376,7 +406,13 @@ export class AgentDoor {
   }
 
   private checkRate(req: AgentRequest): { allowed: boolean; remaining: number; resetAt: number } {
-    return this.rateLimiter.checkRateLimit(req.ip ?? 'unknown', this.rateLimit);
+    const key = req.ip || req.headers['x-forwarded-for']?.split(',')[0]?.trim();
+    if (!key) {
+      // No identifiable client — allow the request but skip rate tracking to
+      // avoid a shared 'unknown' bucket that blocks all anonymous clients.
+      return { allowed: true, remaining: this.rateLimit, resetAt: Date.now() + 60_000 };
+    }
+    return this.rateLimiter.checkRateLimit(key, this.rateLimit);
   }
 
   destroy(): void {
@@ -392,7 +428,8 @@ function corsHeaders(agentsJsonPath: string): Record<string, string> {
   return {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Session-Token',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Session-Token, X-Agent-Session',
+    'Access-Control-Expose-Headers': 'Retry-After, X-RateLimit-Remaining, X-RateLimit-Reset, Link',
     'Link': `<${agentsJsonPath}>; rel="agents"`,
   };
 }
@@ -463,7 +500,10 @@ async function webRequestToAgentRequest(request: globalThis.Request): Promise<Ag
 function extractToken(req: AgentRequest): string | null {
   const auth = req.headers['authorization'];
   if (auth?.startsWith('Bearer ')) return auth.slice(7);
-  return req.headers['x-session-token'] ?? null;
+  // Support both X-Session-Token and X-Agent-Session (spec-defined header)
+  return req.headers['x-session-token']
+    ?? req.headers['x-agent-session']
+    ?? null;
 }
 
 function capabilityRoute(cap: CapabilityDefinition, apiBase: string): string {

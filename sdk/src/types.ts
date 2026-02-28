@@ -52,7 +52,7 @@ export interface SessionData {
   createdAt: Date;
 }
 
-export interface AgentResponse<T = any> {
+export interface AgentResponse<T = unknown> {
   ok: boolean;
   data?: T;
   error?: string;
